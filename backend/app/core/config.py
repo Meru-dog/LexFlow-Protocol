@@ -44,7 +44,7 @@ class Settings(BaseSettings):
     
     # ===== CORS設定 =====
     # クロスオリジンリクエストを許可するURL（カンマ区切り）
-    CORS_ORIGINS: str = "http://localhost:5173,http://localhost:3000"
+    CORS_ORIGINS: str = "http://localhost:5173,http://localhost:3000,https://lexflow-frontend.vercel.app"
     
     # ===== オンチェーン設定 =====
     @property
