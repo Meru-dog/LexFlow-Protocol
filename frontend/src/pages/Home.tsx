@@ -16,7 +16,8 @@ const Home: React.FC = () => {
                         AI駆動のスマートコントラクトプラットフォーム
                     </p>
                     <p className="hero-description">
-                        PDF契約書の自動解析、AI による履行判定、弁護士承認、JPYC 自動決済を統合した<br />
+                        PDF契約書の自動解析、AI による履行判定、<br />
+                        弁護士承認、JPYC 自動決済を統合した<br />
                         次世代の契約管理システム
                     </p>
                     <div className="hero-actions">
