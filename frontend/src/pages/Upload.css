@@ -1,6 +1,6 @@
 .upload-page {
-    padding: var(--space-8);
-    max-width: 1000px;
+    padding: 4rem 3rem;
+    max-width: 850px;
     margin: 0 auto;
     min-height: calc(100vh - 72px);
     display: flex;

@@ -1,9 +1,7 @@
 .contract-detail {
-    padding: var(--space-8) 0;
-    max-width: 1200px;
+    padding: 4rem 3rem;
+    max-width: 1100px;
     margin: 0 auto;
-    padding-left: var(--space-6);
-    padding-right: var(--space-6);
 }
 
 .detail-header {

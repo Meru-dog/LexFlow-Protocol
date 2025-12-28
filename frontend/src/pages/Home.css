@@ -8,7 +8,9 @@
     align-items: center;
     justify-content: space-between;
     min-height: 80vh;
-    padding: var(--space-16) var(--space-6);
+    padding: 5rem 4rem;
+    max-width: 1300px;
+    margin: 0 auto;
     background: linear-gradient(135deg, rgba(99, 102, 241, 0.05) 0%, rgba(168, 85, 247, 0.05) 100%);
     position: relative;
     overflow: hidden;
@@ -119,7 +121,9 @@
 
 /* Section Styles */
 section {
-    padding: var(--space-16) var(--space-6);
+    padding: 5rem 4rem;
+    max-width: 1300px;
+    margin: 0 auto;
 }
 
 .section-title {
@@ -328,5 +332,15 @@ section {
 
     .step-arrow {
         transform: rotate(90deg);
+    }
+}
+
+@media (max-width: 768px) {
+    .hero {
+        padding: var(--space-12) var(--space-6);
+    }
+
+    section {
+        padding: var(--space-12) var(--space-6);
     }
 }
