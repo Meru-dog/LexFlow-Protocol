@@ -1,0 +1,109 @@
+.header {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: #ffffff;
+    backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--color-border);
+    box-shadow: var(--shadow-sm);
+}
+
+.header-content {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 72px;
+}
+
+.logo {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    text-decoration: none;
+}
+
+.logo-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    background: var(--color-accent-gradient);
+    border-radius: var(--radius-lg);
+    color: white;
+}
+
+.logo-text {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: #1e293b;
+}
+
+.logo-badge {
+    font-size: 0.625rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    padding: var(--space-1) var(--space-2);
+    background: rgba(99, 102, 241, 0.15);
+    color: var(--color-accent-primary);
+    border-radius: var(--radius-sm);
+}
+
+.nav {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+}
+
+.nav-link {
+    padding: var(--space-2) var(--space-4);
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: #64748b;
+    border-radius: var(--radius-md);
+    transition: all var(--transition-fast);
+    text-decoration: none;
+}
+
+.nav-link:hover {
+    color: #1e293b;
+    background: var(--color-bg-hover);
+}
+
+.nav-link.active {
+    color: var(--color-accent-primary);
+    background: rgba(99, 102, 241, 0.1);
+}
+
+.header-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+}
+
+.wallet-btn.connected {
+    gap: var(--space-3);
+    background: var(--color-bg-secondary);
+    color: #1e293b;
+}
+
+.wallet-btn .network {
+    font-size: 0.75rem;
+    color: #64748b;
+}
+
+.wallet-btn .address {
+    color: #1e293b;
+    font-weight: 600;
+}
+
+.status-dot.online {
+    background: var(--color-success);
+}
+
+@media (max-width: 768px) {
+    .nav {
+        display: none;
+    }
+}

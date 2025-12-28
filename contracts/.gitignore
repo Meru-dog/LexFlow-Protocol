@@ -1,0 +1,20 @@
+# Environment Variables
+.env
+.env.*
+!.env.example
+
+# Dependencies
+node_modules/
+
+# Hardhat
+artifacts/
+cache/
+typechain-types/
+coverage/
+coverage.json
+deployments/
+
+# IDE
+.vscode/
+.idea/
+.DS_Store

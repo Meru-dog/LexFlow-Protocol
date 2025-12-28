@@ -1,0 +1,14 @@
+# Global
+.DS_Store
+.vscode/
+.idea/
+*.log
+
+# Environment Variables (Root level just in case, though they should be in subdirs)
+.env
+.env.*
+!.env.example
+
+# Internal Documentation
+LOCAL_SETUP.md
+SEPOLIA_SETUP.md
