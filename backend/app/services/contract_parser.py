@@ -70,12 +70,6 @@ class ContractParserService:
     async def extract_pdf_text(self, pdf_content: bytes) -> str:
         """
         PDFファイルからテキストを抽出
-        
-        Args:
-            pdf_content: PDFファイルのバイナリデータ
-            
-        Returns:
-            抽出されたテキスト文字列
         """
         # バイトストリームからPDFを読み込み
         reader = PdfReader(io.BytesIO(pdf_content))
@@ -84,6 +78,23 @@ class ContractParserService:
         for page in reader.pages:
             text += page.extract_text() + "\n"
         return text
+
+    async def extract_text_from_file(self, content: bytes, filename: str) -> str:
+        """
+        ファイル形式に応じてテキストを抽出
+        Support: .pdf, .txt, .md
+        """
+        lower_name = filename.lower()
+        
+        if lower_name.endswith('.pdf'):
+            return await self.extract_pdf_text(content)
+        
+        # Text based formats
+        try:
+            return content.decode('utf-8')
+        except UnicodeDecodeError:
+            # Fallback to other encodings if needed, or try ignore
+            return content.decode('utf-8', errors='ignore')
     
     def compute_hash(self, content: bytes) -> str:
         """
@@ -98,19 +109,22 @@ class ContractParserService:
         """
         return "0x" + hashlib.sha256(content).hexdigest()
     
-    async def parse_contract(self, pdf_content: bytes) -> ParsedContract:
+    async def parse_contract(self, file_content: bytes, filename: str = "contract.pdf") -> ParsedContract:
         """
-        契約書PDFを解析して構造化データを抽出
+        契約書ファイルを解析して構造化データを抽出
         
         Args:
-            pdf_content: PDFファイルのバイナリデータ
+            file_content: ファイルのバイナリデータ
+            filename: ファイル名（拡張子判定用）
             
         Returns:
             ParsedContract: 解析された契約書データ
         """
         
-        # PDFからテキストを抽出
-        contract_text = await self.extract_pdf_text(pdf_content)
+        # ファイルからテキストを抽出
+        print(f"📄 Extracting text from file: {filename} ({len(file_content)} bytes)...")
+        contract_text = await self.extract_text_from_file(file_content, filename)
+        print(f"📖 Extracted {len(contract_text)} characters")
         
         # 契約書解析用のプロンプトを作成
         # システムプロンプトで役割と出力形式を定義
@@ -145,7 +159,13 @@ class ContractParserService:
         )
         
         # AIからの応答を取得
-        response = await self.llm.ainvoke(formatted_prompt)
+        print("☁️ Sending request to OpenAI API...")
+        try:
+            response = await self.llm.ainvoke(formatted_prompt)
+            print("📩 Received response from OpenAI API")
+        except Exception as api_error:
+            print(f"❌ OpenAI API call failed: {api_error}")
+            raise api_error
         
         # 応答をPydanticモデルにパース
         try:

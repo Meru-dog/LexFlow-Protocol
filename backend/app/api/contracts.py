@@ -8,6 +8,8 @@ from sqlalchemy.orm import selectinload
 from typing import List, Optional
 import uuid
 import json
+import os
+import shutil
 
 from app.core.database import get_db
 from app.models.models import Contract, Condition, ContractStatus, ConditionStatus
@@ -17,6 +19,7 @@ from app.schemas.schemas import (
 )
 from app.services.contract_parser import contract_parser
 from app.services.blockchain_service import blockchain_service
+from app.services.version_service import version_service  # V2: F3機能
 
 # ルーターの定義
 router = APIRouter(prefix="/contracts", tags=["Contracts"])
@@ -38,40 +41,80 @@ async def upload_contract(
     - 解析データをデータベースに保存
     - 構造化されたコントラクトデータを返す
     """
-    if not file.filename.endswith(".pdf"):
-        raise HTTPException(status_code=400, detail="Only PDF files are accepted")
+    filename = file.filename.lower()
+    if not (filename.endswith(".pdf") or filename.endswith(".txt") or filename.endswith(".md")):
+        raise HTTPException(status_code=400, detail="Only PDF, Text, and Markdown files are accepted")
     
-    # PDFファイルの内容を読み込んで、ハッシュ値を計算
-    pdf_content = await file.read()
-    pdf_hash = contract_parser.compute_hash(pdf_content)
+    print(f"📄 Uploading file: {file.filename}")
     
-    # AIを使用してコントラクトを解析して、解析結果を取得
-    parsed = await contract_parser.parse_contract(pdf_content)
-    
-    # コントラクトIDの生成
-    contract_id = f"contract_{uuid.uuid4().hex[:12]}"
-    
-    # ユーザー指定の値を優先し、なければAI解析結果を使用
-    contract_title = title if title and title.strip() != "" else parsed.title
-    final_total_amount = total_amount if total_amount is not None else parsed.total_value
-    
-    # コントラクトレコードの作成
-    contract = Contract(
-        id=contract_id,
-        title=contract_title,
-        pdf_url=f"/uploads/{file.filename}",  # In production, save to storage
-        pdf_hash=pdf_hash,
-        payer_address=payer_address or "0x0000000000000000000000000000000000000000",
-        lawyer_address=lawyer_address if lawyer_address and lawyer_address != "" else "0x0000000000000000000000000000000000000000",
-        total_amount=final_total_amount,
-        status=ContractStatus.PENDING,
-        parsed_data=json.dumps(parsed.model_dump()),
-    )
-    
-    # コントラクトレコードをデータベースに保存
-    db.add(contract)
-    # コミット
-    await db.commit()
+    try:
+        # ファイルの内容を読み込んで、ハッシュ値を計算
+        file_content = await file.read()
+        print(f"🔍 File read: {len(file_content)} bytes")
+        file_hash = contract_parser.compute_hash(file_content)
+        
+        # AIを使用してコントラクトを解析して、解析結果を取得
+        print("🤖 Starting AI parsing...")
+        parsed = await contract_parser.parse_contract(file_content, filename=file.filename)
+        print("✅ AI parsing completed")
+        
+        # コントラクトIDの生成
+        contract_id = f"contract_{uuid.uuid4().hex[:12]}"
+        
+        # ユーザー指定の値を優先し、なければAI解析結果を使用
+        contract_title = title if title and title.strip() != "" else parsed.title
+        final_total_amount = total_amount if total_amount is not None else parsed.total_value
+        
+        # ファイルを保存
+        # ファイル名を安全に扱う（ディレクトリトラバーサル対策などが必要だが、ここでは簡易的に）
+        safe_filename = os.path.basename(file.filename)
+        upload_dir = "uploads"
+        os.makedirs(upload_dir, exist_ok=True)
+        file_path = os.path.join(upload_dir, safe_filename)
+        
+        # PDFコンテンツを書き込む（既に読み込んでいるため、メモリから書き込み）
+        with open(file_path, "wb") as f:
+            f.write(file_content)
+        print(f"📁 File saved to: {file_path}")
+
+        # コントラクトレコードの作成
+        print("💾 Saving to database...")
+        contract = Contract(
+            id=contract_id,
+            title=contract_title,
+            file_url=file_path,  # 相対パスとして保存
+            file_hash=file_hash,
+            payer_address=payer_address or "0x0000000000000000000000000000000000000000",
+            lawyer_address=lawyer_address if lawyer_address and lawyer_address != "" else "0x0000000000000000000000000000000000000000",
+            total_amount=final_total_amount,
+            status=ContractStatus.PENDING,
+            parsed_data=json.dumps(parsed.model_dump()),
+        )
+        
+        # コントラクトレコードをデータベースに保存
+        db.add(contract)
+        
+        # V2: F3 初期バージョンの作成
+        print("📁 Creating initial version record...")
+        await version_service.create_version(
+            db=db,
+            case_id=contract_id,
+            file_content=file_content,
+            creator_address=lawyer_address if lawyer_address and lawyer_address != "" else "0x0000000000000000000000000000000000000000",
+            title="Initial Uploaded Version",
+            summary=parsed.summary[:500] if parsed.summary else "Initial version",
+            filename=file.filename
+        )
+        
+        # コミット
+        await db.commit()
+        print(f"🎉 Contract saved with ID: {contract_id}")
+        
+    except Exception as e:
+        print(f"❌ Error during contract upload: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")
     
     return ContractParseResponse(
         contract_id=contract_id,
@@ -114,7 +157,7 @@ async def list_contracts(
         ContractResponse(
             id=c.id,
             title=c.title,
-            pdf_url=c.pdf_url,
+            file_url=c.file_url,
             payer_address=c.payer_address,
             lawyer_address=c.lawyer_address,
             total_amount=c.total_amount,
@@ -148,7 +191,7 @@ async def get_contract(
     return ContractDetail(
         id=contract.id,
         title=contract.title,
-        pdf_url=contract.pdf_url,
+        file_url=contract.file_url,
         payer_address=contract.payer_address,
         lawyer_address=contract.lawyer_address,
         total_amount=contract.total_amount,
@@ -270,3 +313,28 @@ async def add_condition(
         created_at=new_condition.created_at,
         executed_at=new_condition.executed_at,
     )
+@router.get("/{contract_id}/text")
+async def get_contract_text(
+    contract_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    契約書PDFからテキストを抽出して返す
+    """
+    result = await db.execute(
+        select(Contract).where(Contract.id == contract_id)
+    )
+    contract = result.scalar_one_or_none()
+    
+    if not contract:
+        raise HTTPException(status_code=404, detail="Contract not found")
+    
+    if not os.path.exists(contract.file_url):
+         raise HTTPException(status_code=404, detail="File not found")
+         
+    with open(contract.file_url, "rb") as f:
+        file_content = f.read()
+        
+    text = await contract_parser.extract_text_from_file(file_content, filename=os.path.basename(contract.file_url))
+    
+    return {"text": text}

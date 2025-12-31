@@ -263,7 +263,7 @@ class BlockchainService:
         
         # トランザクション完了を待機（タイムアウト付き）
         try:
-            receipt = self.w3.eth.wait_for_transaction_receipt(tx_hash, timeout=120)
+            receipt = self.w3.eth.wait_for_transaction_receipt(tx_hash, timeout=300)
             return {
                 "tx_hash": self.hex_with_0x(receipt.transactionHash.hex()),
                 "block_number": receipt.blockNumber,
@@ -310,7 +310,7 @@ class BlockchainService:
             'from': self.account.address,
             'nonce': self.w3.eth.get_transaction_count(self.account.address),
             'gas': 300000,
-            'gasPrice': self.w3.eth.gas_price,
+            'gasPrice': int(self.w3.eth.gas_price * 1.2), # 20% buffer for faster inclusion
         })
         
         # 署名して送信する
@@ -319,7 +319,7 @@ class BlockchainService:
         
         # トランザクション完了を待機（タイムアウト付き）
         try:
-            receipt = self.w3.eth.wait_for_transaction_receipt(tx_hash, timeout=120)
+            receipt = self.w3.eth.wait_for_transaction_receipt(tx_hash, timeout=300)
             return {
                 "tx_hash": self.hex_with_0x(receipt.transactionHash.hex()),
                 "block_number": receipt.blockNumber,
@@ -455,6 +455,86 @@ class BlockchainService:
         except Exception as e:
             return {"error": str(e)}
     
+    async def verify_token_transfer(
+        self,
+        tx_hash: str,
+        expected_recipient: str,
+        expected_amount: float,
+        token_address: str
+    ) -> tuple[bool, Dict[str, Any]]:
+        """
+        ブロックチェーン上でトークンの転送を検証する
+        
+        Args:
+            tx_hash: トランザクションハッシュ
+            expected_recipient: 期待される受取人アドレス
+            expected_amount: 期待される金額
+            token_address: トークンコントラクトのアドレス
+            
+        Returns:
+            (有効かどうか, 詳細情報)
+        """
+        try:
+            # 1. トランザクションレシーを取得 (完了まで最大30秒待機)
+            # Web3.py (sync) を使用しているため、本来は非同期版を使うのが望ましいが
+            # 現状の構成に合わせて wait_for_transaction_receipt を使用
+            try:
+                # ユーザーの待ち時間を考慮し、少し長めに待機するように設定可能
+                # Sepoliaは比較的速いが、RPCのラグを考慮して30秒待機
+                receipt = self.w3.eth.wait_for_transaction_receipt(tx_hash, timeout=30)
+            except Exception as e:
+                print(f"Transaction receipt not found: {e}")
+                return False, {"error": "トランザクションの確認が取れませんでした。数秒待ってから再試行してください。"}
+
+            # 2. ステータス確認 (1 = Success)
+            if receipt['status'] != 1:
+                return False, {"error": "トランザクションが失敗しています"}
+
+            # 3. トランザクション詳細の取得
+            tx = self.w3.eth.get_transaction(tx_hash)
+            
+            # 4. 送信先（コントラクト）の検証
+            if tx['to'].lower() != token_address.lower():
+                return False, {"error": "不適切なトークンアドレスへの送金です"}
+
+            # 5. インプットデータの解析 (ERC20 transfer)
+            # transfer(address,uint256) -> signature: 0xa9059cbb
+            input_data = tx['input'].hex() if isinstance(tx['input'], bytes) else tx['input']
+            if not input_data.startswith('0x'):
+                input_data = '0x' + input_data
+            
+            if not input_data.lower().startswith('0x9059cbb', 2) and not input_data.lower().startswith('0xa9059cbb'):
+                # 0xあり/なし両方に対応、かつ case-insensitive に検証
+                # transfer(address,uint256) -> signature: 0xa9059cbb
+                return False, {"error": f"transferメソッド以外のトランザクションです (Method ID: {input_data[:10]})"}
+
+            # パラメータ抽出 (32バイトずつ)
+            # addresses are 20 bytes, zero-padded to 32
+            to_addr_raw = input_data[10:74]
+            amount_raw = input_data[74:138]
+
+            # 受取人の検証
+            to_addr = Web3.to_checksum_address("0x" + to_addr_raw[-40:])
+            if to_addr.lower() != expected_recipient.lower():
+                return False, {"error": f"受取人が一致しません。期待: {expected_recipient}, 実際: {to_addr} (Raw: {to_addr_raw})"}
+
+            # 金額の検証
+            amount_wei = int(amount_raw, 16)
+            expected_wei = self.w3.to_wei(expected_amount, 'ether')
+            
+            if amount_wei < expected_wei:
+                return False, {"error": f"金額が不足しています。期待: {expected_amount} ({expected_wei} wei), 実際: {self.w3.from_wei(amount_wei, 'ether')} ({amount_wei} wei)"}
+
+            return True, {
+                "from": tx['from'],
+                "amount": float(self.w3.from_wei(amount_wei, 'ether')),
+                "block_number": receipt['blockNumber']
+            }
+
+        except Exception as e:
+            print(f"Blockchain verification failed: {e}")
+            return False, {"error": str(e)}
+
     def get_etherscan_url(self, tx_hash: str) -> str:
         """トランザクションのEtherscan URLを取得する"""
         chain_id = self.get_chain_id() if self.is_connected() else 11155111
