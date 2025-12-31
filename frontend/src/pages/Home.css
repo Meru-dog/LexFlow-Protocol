@@ -22,10 +22,10 @@
 }
 
 .hero-title {
-    font-size: 3.5rem;
+    font-size: 3rem;
     font-weight: 800;
     margin-bottom: var(--space-4);
-    line-height: 1.1;
+    line-height: 1.2;
 }
 
 .gradient-text {

@@ -37,11 +37,16 @@ export function UploadPage() {
         e.preventDefault();
         setDragOver(false);
         const droppedFile = e.dataTransfer.files[0];
-        if (droppedFile?.type === 'application/pdf') {
-            setFile(droppedFile);
-            setError(null);
-        } else {
-            setError('PDFファイルをアップロードして下さい。');
+        if (droppedFile) {
+            const validTypes = ['application/pdf', 'text/plain', 'text/markdown'];
+            // Check extension as well since some systems might not set MIME type correctly for .md
+            const isMd = droppedFile.name.endsWith('.md');
+            if (validTypes.includes(droppedFile.type) || isMd) {
+                setFile(droppedFile);
+                setError(null);
+            } else {
+                setError('PDF、テキスト(.txt)、またはMarkdown(.md)ファイルをアップロードして下さい。');
+            }
         }
     }, []);
 
@@ -49,11 +54,13 @@ export function UploadPage() {
     const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
         const selectedFile = e.target.files?.[0];
         if (selectedFile) {
-            if (selectedFile.type === 'application/pdf') {
+            const validTypes = ['application/pdf', 'text/plain', 'text/markdown'];
+            const isMd = selectedFile.name.endsWith('.md');
+            if (validTypes.includes(selectedFile.type) || isMd) {
                 setFile(selectedFile);
                 setError(null);
             } else {
-                setError('PDFファイルをアップロードして下さい。');
+                setError('PDF、テキスト(.txt)、またはMarkdown(.md)ファイルをアップロードして下さい。');
             }
         }
     }, []);
@@ -164,7 +171,7 @@ export function UploadPage() {
             <div className="upload-container">
                 <div className="upload-header">
                     <h1>契約書をアップロード</h1>
-                    <p>PDFの契約書をアップロードしてAIで自動解析し、ブロックチェーンに登録します</p>
+                    <p>契約書(PDF/Text/Markdown)をアップロードしてAIで自動解析し、ブロックチェーンに登録します</p>
                 </div>
 
                 <div className="upload-content">
@@ -196,11 +203,11 @@ export function UploadPage() {
                                 <div className="upload-icon">
                                     <Upload size={48} />
                                 </div>
-                                <h3>PDFをここにドラッグ&ドロップ</h3>
+                                <h3>ファイルをここにドラッグ&ドロップ</h3>
                                 <p>またはクリックしてファイルを選択</p>
                                 <input
                                     type="file"
-                                    accept=".pdf"
+                                    accept=".pdf,.txt,.md"
                                     onChange={handleFileSelect}
                                     className="file-input"
                                 />

@@ -35,7 +35,7 @@ class ContractResponse(BaseModel):
     """契約のレスポンススキーマ"""
     id: str
     title: str
-    pdf_url: str
+    file_url: str
     payer_address: str
     lawyer_address: str
     total_amount: float

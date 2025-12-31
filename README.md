@@ -1,98 +1,130 @@
-# LexFlow Protocol
+# LexFlow Protocol: 自律型法務エージェント & 決済統合プラットフォーム
 
-**AI reads the contract, Ethereum executes it, and JPYC moves the money.**
-
-A protocol that synchronizes contract fulfillment and execution using AI and Web3.
-
-[日本語版ドキュメント](README.md) <!-- Since this is the main README, we can keep Japanese or switch to English. The user writes in Japanese, so I will stick to Japanese but adopt the Deployment Guide structure. -->
-<!-- Wait, standard practice for public repos often involves English, but the user's prompt is Japanese and the target audience seems Japanese (Softbank award). I will keep it in Japanese but make it deployment-ready. -->
+LexFlow Protocolは、AI（LLM）とブロックチェーン技術を極限まで統合した、次世代の契約管理・履行・自動決済プラットフォームです。契約ドキュメントを「死んだテキスト」から「自律的に実行される動的なプログラマブル・コントラクト」へと進化させ、法務・財務・技術の三位一体を実現します。
 
 ---
 
-## 📋 概要
+## 1. プロジェクト全体像 (Overall Vision)
 
-LexFlow Protocolは、PDF契約書の自動解析からAI判定、弁護士承認、ブロックチェーン決済までを一気通貫で実現する次世代の契約管理プラットフォームです。
+### 1.1 プロジェクトの目的
+企業活動における「契約」は、締結して終わりではなく、その後の「履行管理」と「決済」が本質です。しかし、現状はこれらが完全に分断されており、多大な事務コストとリスクを生んでいます。LexFlowは、AI判定とオンチェーン証跡を用いてこれらを完全に同期させ、**「トラストレスな契約履行」**を自動化します。
 
-**コンセプト**:  
-「AIが契約を読み、Ethereumが契約を実行し、JPYCが資金を動かす。」
-
-### 🎯 解決する課題
-
-- **手動プロセス**: 契約書の内容確認、条件チェック、支払処理の自動化
-- **不透明性**: ブロックチェーンによる承認プロセスや決済履歴の可視化
-- **不払いリスク**: エスクロー（資金ロック）による確実な支払いの担保
-- **紛争回避**: AIと弁護士による二重チェックと、オンチェーン証跡による事実証明
+### 1.2 ターゲットユーザー
+- **法律事務所 / インハウス法務**: 数千件に及ぶ契約義務の抜け漏れ防止と、交渉プロセスの効率化。
+- **ベンチャーキャピタル / スタートアップ**: SAFEや投資契約におけるマイルストーン管理と、JPYC等のステーブルコインによる迅速な決済。
+- **サプライチェーン管理**: 検収後の自動支払フローの構築。
 
 ---
 
-## 🚀 デプロイとセットアップ
+## 2. 機能要件 (Feature Guide: F1 - F9)
 
-このアプリケーションをご自身の環境やクラウドにデプロイして利用するためのガイドです。
+### 📄 F1: 契約書AI解析 & スキーマ化 (V1 & V2 Core) ✅ Implemented
+*   **概要**: PDF / Markdown / Text 形式の契約書をアップロードすると、AIが即座にプログラマブルな構造化データへ変換。
+*   **詳細**: `file_url` への抽象化により、PDFだけでなくすべてのテキスト形式をサポート。OpenAI GPT-4 を活用し、単なるテキスト抽出を超えた「文脈理解」に基づく条項抽出。
+*   **効果**: 複雑なマイルストーンや支払条件を、人間が介在せずにシステムが認識可能な形式でマッピング。
 
-### 0. 前提条件
+### 📅 F2: AI 義務カレンダー (Dynamic Obligation Timeline) ✅ Implemented
+*   **概要**: 契約上の期限や義務（支払、通知、報告等）を自動抽出し、全当事者が共有できるカレンダーを生成。
+*   **詳細**: 402支払ゲートウェイと統合し、支払完了後に自動で義務を抽出。SQLite上での検証ロジックを強化し、安定したデータ永続化を実現。
+*   **効果**: 「誰が何をいつまでに」という法的義務の不履行リスクをゼロ化。
 
-- **GitHubアカウント**
-- **OpenAI API Key** (GPT-4利用のため)
-- **Infura / Alchemy Key** (Sepolia接続のため)
-- **Ethereum Wallet Private Key** (Sepolia ETHが必要)
+### ✍️ F3: EIP-712 署名 & 版管理 (Trustless Versioning) ✅ Implemented
+*   **概要**: 交渉過程の全てのドラフトにdocHashを割り当て、MetaMaskで暗号学的な署名を実施。
+*   **詳細**: EIP-712（型付きデータ署名）により、ユーザーは「何のハッシュに署名しているか」を平易な日本語で確認可能。
+*   **効果**: 中央集権的なサーバーに依存せず、改ざん不能な「合意の証跡」を不変記録として保持。
+*   **実装済み機能**:
+    - ファイルアップロード時のSHA-256ハッシュ自動計算
+    - MetaMask連携によるEIP-712署名フロー
+    - バックエンドでの`ecrecover`による署名検証
+    - 署名データ（r, s, v値）のデータベース永続化
+    - 版管理UI（ContractVersionsページ）
 
-### 1. リポジトリのセットアップ
+### 🤖 F4: Redline 交渉エージェント ✅ Implemented
+*   **概要**: 相手方からの修正（Redline）をAIが解析し、リスク評価と対案作成を支援。
+*   **詳細**: 2つの契約版PDFを比較し、変更箇所をAI（GPT-4）で分析してリスクレベル（高/中/低）を自動判定。
+*   **効果**: 交渉のリードタイムを50%以上短縮。
+*   **実装済み機能**:
+    - PDFテキスト差分計算（difflib使用）
+    - AIによるリスク評価と提案生成
+    - 視覚的な差分表示（HTML形式）
+    - バージョン選択UIとリスクサマリー表示
 
-1. このリポジトリをFork、またはご自身のアカウントにPushしてください。
-   - **注意**: `.env` ファイルなどの機密情報は `.gitignore` により除外されています。これらを誤ってコミットしないよう注意してください。
+### 🛡️ F7 & F9: ZK オンボーディング (Privacy-First KYC)
+*   **概要**: ゼロ知識証明（ZK）を用い、プライバシーを保護したまま受任前チェック（KYC/利益相反）を実施。
+*   **詳細**: 依頼者の個人情報をサーバーに保存せず、「KYCを通過した」「特定の属性を満たす」という事実のみを証明。
+*   **効果**: 情報漏えいリスクを排除しつつ、高度なコンプライアンス要件を充足。
 
-### 2. バックエンドのデプロイ (Render / Railway / Heroku 等)
-
-`backend` ディレクトリをデプロイします。以下の環境変数を設定してください。
-
-| 変数名 | 説明 | 例 |
-|---|---|---|
-| `OPENAI_API_KEY` | OpenAI APIキー | `sk-...` |
-| `DATABASE_URL` | PostgreSQL接続URL | `postgresql+asyncpg://...` |
-| `ETHEREUM_RPC_URL` | Sepolia RPCエンドポイント | `https://sepolia.infura.io/v3/...` |
-| `PRIVATE_KEY` | トランザクション受信用ウォレット秘密鍵 | `0x...` |
-| `ESCROW_CONTRACT_ADDRESS` | エスクローコントラクト (下記参照) | `0xbDad48381B2EAEeD4a5bfaC8c45601a7dE555B95` |
-| `JPYC_CONTRACT_ADDRESS` | JPYCコントラクト (下記参照) | `0x138D4810c6D977eE490f67D9659Cb26A89d630f9` |
-| `CORS_ORIGINS` | フロントエンドのURL | `https://your-frontend.vercel.app` |
-
-### 3. フロントエンドのデプロイ (Vercel / Netlify 等)
-
-`frontend` ディレクトリをデプロイします。
-
-- **Framework**: Vite
-- **Build Command**: `npm run build`
-- **Output Directory**: `dist`
-
-環境変数の設定:
-
-| 変数名 | 説明 | 例 |
-|---|---|---|
-| `VITE_API_URL` | デプロイしたバックエンドのAPI URL | `https://your-backend.onrender.com/api/v1` |
-
----
-
-## 🌐 デプロイ済みコントラクト (Sepolia Testnet)
-
-本システムは以下のコントラクトを利用して動作します。
-
-| コントラクト名 | アドレス | 説明 |
-|---|---|---|
-| **LexFlowEscrow** | `0xbDad48381B2EAEeD4a5bfaC8c45601a7dE555B95` | 契約実行と資金管理を行うコアコントラクト |
-| **MockJPYC** | `0x138D4810c6D977eE490f67D9659Cb26A89d630f9` | テスト用日本円ステーブルコイン (ERC20) |
+### 💳 F8: x402 支払ゲートウェイ ✅ Implemented
+*   **概要**: HTTP 402コードを利用した、AI処理単位のネイティブ支払いプロトコル。
+*   **詳細**: MetaMaskとのシームレスな連携、およびネットワーク切り替え時のRPC制限回避ロジックを搭載。二重プレフィックスの防止等、プロトコル安定性を極限まで高めています。
+*   **効果**: 「使った分だけ支払う」AI利用モデルと、スマートコントラクトによるエスクロー解除の統合。
 
 ---
 
-## 🛠 技術スタック
+## 3. 実装方法 (Implementation Detail)
 
-| レイヤー | 技術 |
-|---------|------|
-| **Smart Contract** | Solidity, Hardhat, OpenZeppelin |
-| **Backend** | Python, FastAPI, LangGraph, OpenAI API, Web3.py |
-| **Frontend** | TypeScript, React, Vite, ethers.js |
-| **Infrastructure** | Ethereum (Sepolia), Render/Vercel (推奨) |
+### 3.1 AI解析ワークフロー (LangGraph)
+AIは複数のエージェント（解析・検証・整形）に分かれて動作します。
+1.  **解析エージェント**: PDFからテキストを抽出し、法的なエンティティ（条項、金額、期日）を特定。
+2.  **検証エージェント**: 抽出されたデータが契約本文のどこに基づいているか（根拠条項）をクロスチェック。
+3.  **スキーマ生成**: 最終的なJSONデータを生成し、バックエンドへ受け渡し。
+
+### 3.2 ブロックチェーン & 署名 (EIP-712)
+`eth-account` (Python) と `ethers.js` (TypeScript) を使用して、以下のドメイン・タイプ定義を共有しています。
+*   **Domain**: `name: "LexFlow Protocol"`, `version: "1"`, `chainId: 11155111`
+*   **Message**: `caseId`, `version`, `docHash`, `timestamp`
+*   **Verification**: バックエンドが `ecrecover` を実行し、復元されたアドレスが署名者と一致するか検証。
+
+### 3.3 支払ゲートウェイ (x402)
+FastAPIの依存関係注入（Dependency Injection）を利用して、特定のエンドポイントに `PaymentVerifier` を適用しています。
+- 未払い時は `402 Payment Required` を送出し、フロントエンドで自動的に MetaMask 決済モーダルを起動。
+- トランザクションハッシュをヘッダーに乗せて再リクエストすることで、バックエンドが RPC 経由で着金を検証。
 
 ---
 
-## 📄 ライセンス
+## 4. デプロイ方法 (Deployment Guide)
 
-MIT License
+### 4.1 Prerequisites
+- Python 3.9+
+- Node.js 18+
+- MetaMaskウォレット（Sepolia TestnetにJPYC/ETHがあること）
+
+### 4.2 バックエンドの起動
+```bash
+cd backend
+python -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+# .envの設定 (OPENAI_API_KEY, ETHEREUM_RPC_URL)
+uvicorn app.main:app --reload --port 8000
+```
+
+### 4.3 フロントエンドの起動
+```bash
+cd frontend
+npm install
+# .envの設定 (VITE_API_URL=http://localhost:8000/api/v1)
+npm run dev
+```
+
+### 4.4 スマートコントラクト（任意）
+現在はモック/共有コントラクトを使用していますが、独自にデプロイする場合は `contracts/` 下のファイルを `Hardhat` でデプロイしてください。
+
+---
+
+## 5. ロードマップ (Roadmap)
+- **Phase 1**: 基盤構築（PDF解析・エスクロー） [Done]
+- **Phase 2**: V2機能統合（義務管理、x402、AI Redline） [Done]
+- **Phase 3**: プライバシー & 高度な自動化（ZK Proofs、法的プレイブック学習、RBAC） [In Progress]
+
+---
+
+## 6. ライセンス & 免責事項
+### 6.1 免責事項
+本プロダクトは、法務実務を補助するAIエージェントであり、AIの出力結果が常に正確であることは保証されません。最終的な署名や送金判断は、必ず人間が判断を行ってください。
+
+### 6.2 ライセンス
+MIT License / Copyright © 2025 LexFlow Protocol Project
+
+---
+**LexFlow Protocol: The Intelligent Layer for Legal Engineering.**

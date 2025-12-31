@@ -23,16 +23,18 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str = ""  # OpenAI APIキー
     
     # ===== データベース設定 =====
-    # PostgreSQL非同期接続URL
-    DATABASE_URL: str = "postgresql+asyncpg://postgres:password@localhost:5432/lexflow"
+    # PostgreSQL非同期接続URL (デフォルトをSQLiteに変更)
+    DATABASE_URL: str = "sqlite+aiosqlite:///./lexflow.db"
     
     # ===== ブロックチェーン設定 =====
     # Ethereum RPC URL（Infura、Alchemy等のプロバイダー）
     ETHEREUM_RPC_URL: str = "https://sepolia.infura.io/v3/YOUR_KEY"
     # エスクロースマートコントラクトのアドレス
     ESCROW_CONTRACT_ADDRESS: str = ""
-    # JPYCトークンコントラクトのアドレス
-    JPYC_CONTRACT_ADDRESS: str = ""
+    # JPYCトークンコントラクトのアドレス (Sepolia)
+    JPYC_CONTRACT_ADDRESS: str = "0x138D4810c6D977eE490f67D9659Cb26A89d630f9"
+    # 支払いの受取先アドレス（テスラや運営費などのプール）
+    TREASURY_ADDRESS: str = "0x18c151c219b4B0B8D2E88B8c4F9A8b83596bf7Bb"
     # トランザクション署名用の秘密鍵（安全に管理すること！）
     PRIVATE_KEY: str = ""
     
@@ -44,7 +46,7 @@ class Settings(BaseSettings):
     
     # ===== CORS設定 =====
     # クロスオリジンリクエストを許可するURL（カンマ区切り）
-    CORS_ORIGINS: str = "http://localhost:5173,http://localhost:3000"
+    CORS_ORIGINS: str = "http://localhost:5173,http://localhost:5174,http://localhost:3000,https://lexflow-frontend.vercel.app"
     
     # ===== オンチェーン設定 =====
     @property

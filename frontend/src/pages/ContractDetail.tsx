@@ -10,9 +10,11 @@ import {
     Shield,
     Plus,
     Gavel,
-    ExternalLink
+    ExternalLink,
+    Calendar,
+    History as HistoryIcon
 } from 'lucide-react';
-import { api } from '../services/api';
+import { api, getFileUrl } from '../services/api';
 import { useWallet } from '../contexts/WalletContext';
 import type { ContractWithDetails, Condition } from '../types';
 import './ContractDetail.css';
@@ -33,6 +35,8 @@ export function ContractDetail() {
     const [showApproveModal, setShowApproveModal] = useState<string | null>(null);
     const [aiJudgment, setAiJudgment] = useState<any>(null);
     const [loadingAi, setLoadingAi] = useState(false);
+    const [contractText, setContractText] = useState<string>('');
+    const [loadingText, setLoadingText] = useState(false);
 
     // AI理由からJSONを抽出してパースする関数
     const parseAiReason = (reason: string): string => {
@@ -109,10 +113,25 @@ export function ContractDetail() {
             setLoading(true);
             const data = await api.getContract(id!);
             setContract(data as ContractWithDetails);
+
+            // 契約書テキストの読み込み
+            loadContractText(id!);
         } catch (err: any) {
             setError(err.message || '契約詳細の読み込みに失敗しました');
         } finally {
             setLoading(false);
+        }
+    };
+
+    const loadContractText = async (contractId: string) => {
+        try {
+            setLoadingText(true);
+            const res = await api.getContractText(contractId);
+            setContractText(res.text);
+        } catch (err) {
+            console.error('Failed to load contract text:', err);
+        } finally {
+            setLoadingText(false);
         }
     };
 
@@ -133,6 +152,19 @@ export function ContractDetail() {
     // 条件の追加
     const handleAddCondition = async () => {
         if (!id) return;
+
+        // バリデーション
+        if (newCondition.payment_amount <= 0) {
+            alert('金額は0より大きい値を入力してください');
+            return;
+        }
+
+        const addressRegex = /^0x[a-fA-F0-9]{40}$/;
+        if (!addressRegex.test(newCondition.recipient_address)) {
+            alert('有効なEthereumアドレスを入力してください (0x...)');
+            return;
+        }
+
         try {
             await api.addCondition(id, newCondition);
             setShowAddCondition(false);
@@ -222,6 +254,20 @@ export function ContractDetail() {
                     </div>
                 </div>
                 <div className="detail-header-actions">
+                    <button
+                        className="btn btn-secondary mr-2"
+                        onClick={() => navigate(`/contracts/${id}/obligations`)}
+                    >
+                        <Calendar size={16} className="mr-2" />
+                        義務カレンダー
+                    </button>
+                    <button
+                        className="btn btn-secondary mr-2"
+                        onClick={() => navigate(`/contracts/${id}/versions`)}
+                    >
+                        <HistoryIcon size={16} className="mr-2" />
+                        署名・版管理
+                    </button>
                     {contract.status === 'pending' && (
                         <button
                             className="btn btn-primary"
@@ -518,8 +564,8 @@ export function ContractDetail() {
                             </>
                         )}
                         <div className="info-row">
-                            <span className="info-label">元のPDF</span>
-                            <button className="btn btn-ghost btn-sm p-0 h-auto" onClick={() => window.open(contract.pdf_url)}>
+                            <span className="info-label">元のファイル</span>
+                            <button className="btn btn-ghost btn-sm p-0 h-auto" onClick={() => window.open(getFileUrl(contract.file_url))}>
                                 ダウンロード <ExternalLink size={12} />
                             </button>
                         </div>
@@ -694,6 +740,35 @@ export function ContractDetail() {
                     </div>
                 </div>
             )}
+
+            {/* Contract Full Text Section */}
+            <div className="detail-section card mt-8">
+                <div className="flex justify-between items-center mb-4">
+                    <h2><FileText size={20} /> 契約書全文</h2>
+                    {contract.file_url && (
+                        <a
+                            href={getFileUrl(contract.file_url)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-sm text-primary hover:text-primary-focus bg-neutral px-3 py-1 rounded-full flex items-center gap-1 transition-colors font-medium"
+                        >
+                            ファイルを表示 <ExternalLink size={12} />
+                        </a>
+                    )}
+                </div>
+                {loadingText ? (
+                    <div className="flex items-center gap-2 p-4">
+                        <div className="spinner-sm"></div>
+                        <span>テキストを抽出中...</span>
+                    </div>
+                ) : contractText ? (
+                    <div className="contract-full-text">
+                        {contractText}
+                    </div>
+                ) : (
+                    <p className="text-secondary p-4">テキストを読み込めませんでした。</p>
+                )}
+            </div>
         </div>
     );
 }

@@ -1,0 +1,451 @@
+/* RedlineCompare.css - Redline比較ページのスタイル */
+
+.redline-page {
+    padding: 24px;
+    max-width: 1400px;
+    margin: 0 auto;
+}
+
+.page-header {
+    margin-bottom: 32px;
+}
+
+.back-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: #6b7280;
+    text-decoration: none;
+    font-size: 0.875rem;
+    margin-bottom: 16px;
+    transition: color 0.2s;
+}
+
+.back-link:hover {
+    color: #4f46e5;
+}
+
+.header-main {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.title-group {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.title-group svg {
+    color: #4f46e5;
+}
+
+.title-group h1 {
+    font-size: 1.75rem;
+    font-weight: 700;
+    color: #111827;
+    margin: 0;
+}
+
+.title-group p {
+    color: #6b7280;
+    margin: 4px 0 0 0;
+}
+
+/* カード共通スタイル */
+.card {
+    background: white;
+    border-radius: 12px;
+    padding: 24px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    margin-bottom: 24px;
+}
+
+.card h2 {
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: #111827;
+    margin: 0 0 16px 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* バージョン選択セクション */
+.version-selector h2 {
+    margin-bottom: 20px;
+}
+
+.selector-row {
+    display: flex;
+    align-items: flex-end;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+
+.selector-item {
+    flex: 1;
+    min-width: 200px;
+}
+
+.selector-item label {
+    display: block;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: #374151;
+    margin-bottom: 8px;
+}
+
+.selector-item select {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    background: white;
+    cursor: pointer;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.selector-item select:focus {
+    outline: none;
+    border-color: #4f46e5;
+    box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+}
+
+.selector-arrow {
+    font-size: 1.5rem;
+    color: #9ca3af;
+    padding-bottom: 8px;
+}
+
+.compare-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 20px;
+    font-weight: 600;
+}
+
+.compare-btn .spin {
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    from {
+        transform: rotate(0deg);
+    }
+
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.warning-message {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 16px;
+    padding: 12px;
+    background: #fffbeb;
+    border: 1px solid #fde68a;
+    border-radius: 8px;
+    color: #92400e;
+    font-size: 0.875rem;
+}
+
+/* エラーメッセージ */
+.error-message {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    color: #b91c1c;
+}
+
+/* リスク評価サマリー */
+.risk-summary {
+    background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+}
+
+.risk-overview {
+    display: flex;
+    align-items: center;
+    gap: 32px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+}
+
+.overall-risk {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 20px;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 1.125rem;
+}
+
+.overall-risk.high {
+    background: #fef2f2;
+    color: #dc2626;
+    border: 1px solid #fecaca;
+}
+
+.overall-risk.medium {
+    background: #fffbeb;
+    color: #d97706;
+    border: 1px solid #fde68a;
+}
+
+.overall-risk.low {
+    background: #ecfdf5;
+    color: #059669;
+    border: 1px solid #a7f3d0;
+}
+
+.risk-counts {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+
+.risk-count {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 0.875rem;
+    font-weight: 500;
+}
+
+.risk-count.high {
+    background: #fee2e2;
+    color: #dc2626;
+}
+
+.risk-count.medium {
+    background: #fef3c7;
+    color: #d97706;
+}
+
+.risk-count.low {
+    background: #d1fae5;
+    color: #059669;
+}
+
+.risk-summary-text {
+    color: #4b5563;
+    line-height: 1.6;
+    margin: 0;
+}
+
+/* 要約セクション */
+.summary-section p {
+    color: #374151;
+    line-height: 1.7;
+    margin: 0;
+}
+
+/* 変更詳細 */
+.changes-list {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.change-item {
+    padding: 16px;
+    border-radius: 8px;
+    border-left: 4px solid;
+}
+
+.change-item.high {
+    background: #fef2f2;
+    border-left-color: #dc2626;
+}
+
+.change-item.medium {
+    background: #fffbeb;
+    border-left-color: #d97706;
+}
+
+.change-item.low {
+    background: #f0fdf4;
+    border-left-color: #059669;
+}
+
+.change-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 8px;
+}
+
+.risk-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.risk-badge.high {
+    background: #dc2626;
+    color: white;
+}
+
+.risk-badge.medium {
+    background: #d97706;
+    color: white;
+}
+
+.risk-badge.low {
+    background: #059669;
+    color: white;
+}
+
+.change-location {
+    font-weight: 500;
+    color: #374151;
+}
+
+.risk-reason {
+    color: #4b5563;
+    margin: 0 0 8px 0;
+    font-size: 0.9rem;
+}
+
+.recommendation {
+    background: rgba(255, 255, 255, 0.7);
+    padding: 10px 12px;
+    border-radius: 6px;
+    font-size: 0.875rem;
+    color: #1f2937;
+}
+
+.recommendation strong {
+    color: #4f46e5;
+}
+
+.no-changes {
+    color: #6b7280;
+    text-align: center;
+    padding: 24px;
+}
+
+/* 提案セクション */
+.recommendations-list {
+    margin: 0;
+    padding-left: 20px;
+}
+
+.recommendations-list li {
+    color: #374151;
+    line-height: 1.7;
+    margin-bottom: 8px;
+}
+
+.recommendations-list li::marker {
+    color: #4f46e5;
+}
+
+/* 差分表示 */
+.diff-section {
+    overflow-x: auto;
+}
+
+.diff-viewer {
+    font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', monospace;
+    font-size: 0.8rem;
+    line-height: 1.5;
+}
+
+.diff-viewer table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.diff-viewer td {
+    padding: 4px 8px;
+    vertical-align: top;
+}
+
+.diff-viewer .diff_add {
+    background-color: #dcfce7;
+}
+
+.diff-viewer .diff_sub {
+    background-color: #fee2e2;
+}
+
+.diff-viewer .diff_chg {
+    background-color: #fef3c7;
+}
+
+/* ボタンスタイル */
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 10px 16px;
+    border-radius: 8px;
+    font-weight: 500;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    border: none;
+}
+
+.btn-primary {
+    background: #4f46e5;
+    color: white;
+}
+
+.btn-primary:hover:not(:disabled) {
+    background: #4338ca;
+}
+
+.btn-primary:disabled {
+    background: #a5b4fc;
+    cursor: not-allowed;
+}
+
+/* ローディング */
+.loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 200px;
+    color: #6b7280;
+    font-size: 1rem;
+}
+
+/* レスポンシブ */
+@media (max-width: 768px) {
+    .selector-row {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .selector-arrow {
+        text-align: center;
+        padding: 8px 0;
+    }
+
+    .compare-btn {
+        width: 100%;
+    }
+
+    .risk-overview {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+}

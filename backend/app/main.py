@@ -10,7 +10,7 @@ from contextlib import asynccontextmanager  # 非同期コンテキストマネ�
 
 from app.core.config import settings  # アプリケーション設定の読み込み
 from app.core.database import engine, Base  # データベースエンジンとベースモデル
-from app.api import contracts, judgments  # APIルーターのインポート
+from app.api import contracts, judgments, obligations, versions, signatures, redline  # APIルーターのインポート（V2: obligations, versions, signatures, redlineを追加）
 
 
 @asynccontextmanager
@@ -107,8 +107,19 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 # APIルーターの登録
 # /api/v1 プレフィックスで各ルーターを登録
+from fastapi.staticfiles import StaticFiles
+import os
+
 app.include_router(contracts.router, prefix="/api/v1")  # 契約管理API
 app.include_router(judgments.router, prefix="/api/v1")  # 判定・承認API
+app.include_router(obligations.router, prefix="/api/v1")  # V2: 義務管理API（F2）
+app.include_router(versions.router, prefix="/api/v1")     # V2: 契約版管理API（F3）
+app.include_router(signatures.router, prefix="/api/v1")   # V2: 署名API（F3）
+app.include_router(redline.router, prefix="/api/v1")      # V2: Redline比較API（F4）
+
+# 静的ファイルの提供 (PDF表示用)
+os.makedirs("uploads", exist_ok=True)
+app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 
 @app.get("/")
@@ -154,3 +165,20 @@ async def blockchain_status():
         "escrow_address": settings.ESCROW_CONTRACT_ADDRESS,  # エスクローコントラクトアドレス
         "jpyc_address": settings.JPYC_CONTRACT_ADDRESS,  # JPYCトークンアドレス
     }
+
+
+@app.get("/api/v1/config")
+async def get_config():
+    """
+    フロントエンドと同期すべき公開設定を取得
+    """
+    return {
+        "chainId": 11155111, # Sepolia
+        "escrowAddress": settings.ESCROW_CONTRACT_ADDRESS or "0x0000000000000000000000000000000000000000",
+        "jpycAddress": settings.JPYC_CONTRACT_ADDRESS,
+        "appName": settings.APP_NAME
+    }
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
