@@ -13,6 +13,8 @@ import { ContractDetail } from './pages/ContractDetail';
 import ObligationTimeline from './pages/ObligationTimeline';  // V2: F2機能
 import ContractVersions from './pages/ContractVersions';    // V2: F3機能
 import RedlineCompare from './pages/RedlineCompare';        // V2: F4機能
+import VerificationPage from './pages/VerificationPage';    // V2: F7/F9 Dedicated Page
+import ZKOnboarding from './components/zk/ZKOnboarding';   // V2: F7/F9機能
 import './index.css';
 
 // React Query クライアント
@@ -42,6 +44,8 @@ function App() {
                 <Route path="/contracts/:contractId/obligations" element={<ObligationTimeline />} /> {/* V2: F2 */}
                 <Route path="/contracts/:contractId/versions" element={<ContractVersions />} />  {/* V2: F3 */}
                 <Route path="/contracts/:contractId/redline" element={<RedlineCompare />} />     {/* V2: F4 */}
+                <Route path="/verification" element={<VerificationPage />} />                    {/* V2: F7/F9 Dedicated Page */}
+                <Route path="/zk-onboarding" element={<ZKOnboarding />} />                       {/* V2: Legacy Route */}
                 <Route path="/upload" element={<UploadPage />} />
               </Routes>
             </main>

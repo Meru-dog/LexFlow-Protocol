@@ -1,0 +1,30 @@
+.verification-page {
+    padding: 2rem 0;
+    max-width: 900px;
+    margin: 0 auto;
+}
+
+.verification-header {
+    margin-bottom: 2rem;
+    text-align: center;
+}
+
+.verification-header h1 {
+    font-size: 2rem;
+    font-weight: 700;
+    margin-bottom: 0.5rem;
+    background: linear-gradient(135deg, #FF6B6B 0%, #4ECDC4 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.verification-header p {
+    color: var(--text-secondary);
+}
+
+.verification-footer {
+    margin-top: 3rem;
+    text-align: center;
+    color: var(--text-tertiary);
+    opacity: 0.6;
+}

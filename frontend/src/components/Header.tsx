@@ -37,6 +37,7 @@ export function Header() {
                     <Link to="/" className="nav-link">Home</Link>
                     <Link to="/dashboard" className="nav-link">Dashboard</Link>
                     <Link to="/contracts" className="nav-link">Contracts</Link>
+                    <Link to="/verification" className="nav-link">Verification</Link>
                     <Link to="/upload" className="nav-link">Upload</Link>
                 </nav>
 

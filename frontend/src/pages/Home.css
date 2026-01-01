@@ -344,3 +344,28 @@ section {
         padding: var(--space-12) var(--space-6);
     }
 }
+/* ZK Onboarding Feature Card */
+.feature-card.highlight-zk {
+    border: 2px solid rgba(59, 130, 246, 0.3);
+    background: linear-gradient(145deg, #ffffff 0%, #f0f7ff 100%);
+}
+
+.zk-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 1.5rem;
+    padding: 0.6rem 1.2rem;
+    background: #3b82f6;
+    color: white;
+    border-radius: 0.5rem;
+    font-weight: 600;
+    font-size: 0.9rem;
+    transition: all 0.2s;
+    text-decoration: none;
+}
+
+.zk-button:hover {
+    background: #2563eb;
+    transform: translateX(4px);
+}

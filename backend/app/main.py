@@ -10,7 +10,7 @@ from contextlib import asynccontextmanager  # 非同期コンテキストマネ�
 
 from app.core.config import settings  # アプリケーション設定の読み込み
 from app.core.database import engine, Base  # データベースエンジンとベースモデル
-from app.api import contracts, judgments, obligations, versions, signatures, redline  # APIルーターのインポート（V2: obligations, versions, signatures, redlineを追加）
+from app.api import contracts, judgments, obligations, versions, signatures, redline, zk_proofs  # APIルーターのインポート（V2: ...に加えzk_proofsを追加）
 
 
 @asynccontextmanager
@@ -116,6 +116,7 @@ app.include_router(obligations.router, prefix="/api/v1")  # V2: 義務管理API�
 app.include_router(versions.router, prefix="/api/v1")     # V2: 契約版管理API（F3）
 app.include_router(signatures.router, prefix="/api/v1")   # V2: 署名API（F3）
 app.include_router(redline.router, prefix="/api/v1")      # V2: Redline比較API（F4）
+app.include_router(zk_proofs.router, prefix="/api/v1")    # V2: ZK証跡API（F7/F9）
 
 # 静的ファイルの提供 (PDF表示用)
 os.makedirs("uploads", exist_ok=True)

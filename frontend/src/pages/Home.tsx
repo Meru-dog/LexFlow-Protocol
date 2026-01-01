@@ -113,6 +113,24 @@ const Home: React.FC = () => {
                             <span className="tech-badge">Escrow</span>
                         </div>
                     </div>
+
+                    <div className="feature-card card highlight-zk">
+                        <div className="feature-icon">
+                            <Shield size={32} />
+                        </div>
+                        <h3>🛡️ ZK プライバシーオンボーディング</h3>
+                        <p>
+                            ゼロ知識証明（ZK-Proof）により、個人情報を開示せずにKYCや利益相反チェックを実現。法的な信頼性とプライバシー保護を両立します。
+                        </p>
+                        <div className="feature-tech">
+                            <span className="tech-badge">Circom</span>
+                            <span className="tech-badge">snarkjs</span>
+                            <span className="tech-badge">Poseidon</span>
+                        </div>
+                        <Link to="/zk-onboarding" className="zk-button">
+                            使ってみる <ArrowRight size={16} />
+                        </Link>
+                    </div>
                 </div>
             </section>
 

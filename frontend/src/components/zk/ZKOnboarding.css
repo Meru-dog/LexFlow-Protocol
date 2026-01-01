@@ -1,0 +1,284 @@
+.zk-onboarding-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 1rem;
+    gap: 2rem;
+    background: transparent;
+    width: 100%;
+}
+
+.zk-card {
+    background: white;
+    width: 100%;
+    max-width: 600px;
+    padding: 2.5rem;
+    border-radius: 1.5rem;
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+    border: 1px solid #e2e8f0;
+    transition: all 0.3s ease;
+}
+
+.zk-tabs {
+    display: flex;
+    justify-content: center;
+    gap: 1rem;
+    margin-bottom: 0;
+    width: 100%;
+    max-width: 600px;
+}
+
+.zk-tab {
+    flex: 1;
+    padding: 1rem;
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 0.75rem;
+    cursor: pointer;
+    font-weight: 600;
+    color: #64748b;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    transition: all 0.2s;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.zk-tab:hover {
+    transform: translateY(-2px);
+    border-color: #cbd5e1;
+    color: #334155;
+}
+
+.zk-tab.active {
+    background: #3b82f6;
+    color: white;
+    border-color: #3b82f6;
+    box-shadow: 0 4px 6px -1px rgba(59, 130, 246, 0.3);
+}
+
+.zk-textarea-secret {
+    width: 100%;
+    padding: 0.75rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 0.5rem;
+    font-size: 1rem;
+    margin-bottom: 0.5rem;
+    font-family: monospace;
+    resize: vertical;
+}
+
+.zk-content {
+    text-align: center;
+}
+
+.zk-icon-wrapper {
+    display: inline-flex;
+    padding: 1.5rem;
+    background: #f1f5f9;
+    border-radius: 50%;
+    margin-bottom: 1.5rem;
+    color: #3b82f6;
+}
+
+.zk-icon.success {
+    color: #10b981;
+}
+
+.zk-content h2,
+.zk-content h3 {
+    font-size: 1.5rem;
+    color: #1e293b;
+    margin-bottom: 1rem;
+    font-weight: 700;
+}
+
+.zk-content p {
+    color: #64748b;
+    line-height: 1.6;
+    margin-bottom: 1.5rem;
+}
+
+.zk-features {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    margin-bottom: 2rem;
+    text-align: left;
+    background: #f8fafc;
+    padding: 1rem;
+    border-radius: 0.75rem;
+}
+
+.zk-feature {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    color: #475569;
+    font-size: 0.9rem;
+}
+
+.zk-feature svg {
+    color: #3b82f6;
+    flex-shrink: 0;
+}
+
+.zk-btn {
+    width: 100%;
+    padding: 0.875rem;
+    border-radius: 0.75rem;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    transition: all 0.2s;
+    cursor: pointer;
+    border: none;
+}
+
+.zk-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.zk-btn-primary {
+    background: #3b82f6;
+    color: white;
+}
+
+.zk-btn-primary:hover:not(:disabled) {
+    background: #2563eb;
+    transform: translateY(-1px);
+}
+
+.zk-btn-success {
+    background: #10b981;
+    color: white;
+}
+
+.zk-btn-success:hover {
+    background: #059669;
+}
+
+.zk-header {
+    display: flex;
+    align-items: center;
+    margin-bottom: 1.5rem;
+    position: relative;
+}
+
+.zk-back {
+    background: none;
+    border: none;
+    color: #64748b;
+    cursor: pointer;
+    font-size: 0.9rem;
+    position: absolute;
+    left: 0;
+}
+
+.zk-header h3 {
+    margin: 0 auto;
+}
+
+.zk-input-group {
+    text-align: left;
+    margin-bottom: 1.5rem;
+}
+
+.zk-input-group label {
+    display: block;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: #475569;
+    margin-bottom: 0.5rem;
+}
+
+.zk-input-group input {
+    width: 100%;
+    padding: 0.75rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 0.5rem;
+    font-size: 1rem;
+    transition: border-color 0.2s;
+}
+
+.zk-input-group input:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.zk-input-group input.error {
+    border-color: #ef4444;
+}
+
+.zk-error-text {
+    color: #ef4444;
+    font-size: 0.8rem;
+    margin-top: 0.25rem;
+    display: block;
+}
+
+.zk-loader-wrapper {
+    margin: 2rem 0;
+}
+
+.zk-spinner {
+    animation: rotate 2s linear infinite;
+    color: #3b82f6;
+}
+
+@keyframes rotate {
+    100% {
+        transform: rotate(360deg);
+    }
+}
+
+.pulse {
+    animation: pulse-animation 2s infinite;
+}
+
+@keyframes pulse-animation {
+    0% {
+        box-shadow: 0 0 0 0px rgba(59, 130, 246, 0.2);
+    }
+
+    100% {
+        box-shadow: 0 0 0 20px rgba(59, 130, 246, 0);
+    }
+}
+
+.fade-in {
+    animation: fadeIn 0.3s ease-out forwards;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.success-pop {
+    animation: pop 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+}
+
+@keyframes pop {
+    0% {
+        transform: scale(0.5);
+        opacity: 0;
+    }
+
+    100% {
+        transform: scale(1);
+        opacity: 1;
+    }
+}

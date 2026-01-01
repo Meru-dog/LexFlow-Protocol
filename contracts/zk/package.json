@@ -1,0 +1,25 @@
+{
+    "name": "lexflow-zk-proofs",
+    "version": "1.0.0",
+    "description": "Zero-Knowledge Proof circuits for LexFlow Protocol (KYC, Conflict of Interest, Fulfillment Status)",
+    "scripts": {
+        "download:ptau": "curl -L https://storage.googleapis.com/zkevm/ptau/powersOfTau28_hez_final_12.ptau -o powersOfTau28_hez_final_12.ptau",
+        "compile:kyc": "circom circuits/kyc_verification.circom --r1cs --wasm --sym -o build/kyc",
+        "compile:coi": "circom circuits/conflict_of_interest.circom --r1cs --wasm --sym -o build/coi",
+        "compile:fulfillment": "circom circuits/fulfillment_status.circom --r1cs --wasm --sym -o build/fulfillment",
+        "compile:all": "npm run compile:kyc && npm run compile:coi && npm run compile:fulfillment",
+        "setup:kyc": "snarkjs groth16 setup build/kyc/kyc_verification.r1cs powersOfTau28_hez_final_12.ptau build/kyc/kyc_verification.zkey",
+        "setup:coi": "snarkjs groth16 setup build/coi/conflict_of_interest.r1cs powersOfTau28_hez_final_12.ptau build/coi/conflict_of_interest.zkey",
+        "setup:fulfillment": "snarkjs groth16 setup build/fulfillment/fulfillment_status.r1cs powersOfTau28_hez_final_12.ptau build/fulfillment/fulfillment_status.zkey",
+        "setup:all": "npm run setup:kyc && npm run setup:coi && npm run setup:fulfillment",
+        "export:all": "node scripts/export_verification_keys.js",
+        "test": "node tests/test_circuits.js"
+    },
+    "dependencies": {
+        "snarkjs": "^0.7.4",
+        "circomlib": "^2.0.5"
+    },
+    "devDependencies": {
+        "mocha": "^10.2.0"
+    }
+}
