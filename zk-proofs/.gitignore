@@ -1,0 +1,12 @@
+# コンパイルされた回路ファイル
+build/
+
+# Node依存関係
+node_modules/
+
+# Powers of Tauファイル（大容量、別途ダウンロード）
+*.ptau
+
+# 一時ファイル
+*.tmp
+*.log
