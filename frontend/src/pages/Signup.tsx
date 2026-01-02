@@ -112,6 +112,7 @@ export const SignupPage: React.FC = () => {
                             value={password}
                             onChange={(e) => setPassword(e.target.value)}
                             placeholder="8文字以上（大文字・小文字・数字）"
+                            autoComplete="new-password"
                             required
                         />
                         <div className="password-requirements">
@@ -131,6 +132,7 @@ export const SignupPage: React.FC = () => {
                             value={confirmPassword}
                             onChange={(e) => setConfirmPassword(e.target.value)}
                             placeholder="もう一度入力"
+                            autoComplete="new-password"
                             required
                         />
                     </div>

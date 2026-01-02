@@ -8,7 +8,8 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from pydantic import BaseModel, EmailStr, Field
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 
 from app.core.database import get_db
 from app.models.models import User, Wallet, UserStatus
@@ -97,7 +98,7 @@ _nonce_store: dict = {}
 # ===== エンドポイント =====
 
 @router.post("/signup", response_model=SignupResponse, status_code=status.HTTP_201_CREATED)
-async def signup(request: SignupRequest, db: Session = Depends(get_db)):
+async def signup(request: SignupRequest, db: AsyncSession = Depends(get_db)):
     """
     新規ユーザー登録
     
@@ -111,7 +112,8 @@ async def signup(request: SignupRequest, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail=error_msg)
     
     # メールアドレス重複チェック
-    existing_user = db.query(User).filter(User.email == request.email).first()
+    result = await db.execute(select(User).where(User.email == request.email))
+    existing_user = result.scalar_one_or_none()
     if existing_user:
         raise HTTPException(status_code=400, detail="このメールアドレスは既に登録されています")
     
@@ -127,7 +129,7 @@ async def signup(request: SignupRequest, db: Session = Depends(get_db)):
         status=UserStatus.PENDING
     )
     db.add(new_user)
-    db.commit()
+    await db.commit()
     
     # メール確認トークン生成（実際の送信は別途実装）
     verification_token = auth_service.create_email_verification_token(user_id, request.email)
@@ -141,7 +143,7 @@ async def signup(request: SignupRequest, db: Session = Depends(get_db)):
 
 
 @router.post("/login", response_model=LoginResponse)
-async def login(request: LoginRequest, db: Session = Depends(get_db)):
+async def login(request: LoginRequest, db: AsyncSession = Depends(get_db)):
     """
     ログイン
     
@@ -149,7 +151,8 @@ async def login(request: LoginRequest, db: Session = Depends(get_db)):
     - JWTアクセストークンとリフレッシュトークンを発行
     """
     # ユーザー取得
-    user = db.query(User).filter(User.email == request.email).first()
+    result = await db.execute(select(User).where(User.email == request.email))
+    user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=401, detail="メールアドレスまたはパスワードが正しくありません")
     
@@ -187,7 +190,7 @@ async def logout():
 
 
 @router.post("/token/refresh", response_model=LoginResponse)
-async def refresh_token(request: TokenRefreshRequest, db: Session = Depends(get_db)):
+async def refresh_token(request: TokenRefreshRequest, db: AsyncSession = Depends(get_db)):
     """
     トークンリフレッシュ
     
@@ -198,7 +201,8 @@ async def refresh_token(request: TokenRefreshRequest, db: Session = Depends(get_
         raise HTTPException(status_code=401, detail="無効なリフレッシュトークンです")
     
     user_id = payload.get("sub")
-    user = db.query(User).filter(User.id == user_id).first()
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=401, detail="ユーザーが見つかりません")
     
@@ -241,7 +245,7 @@ async def get_wallet_nonce(request: WalletNonceRequest):
 async def verify_wallet(
     request: WalletVerifyRequest,
     authorization: Optional[str] = None,
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """
     ウォレット署名を検証してユーザーに紐付け
@@ -271,7 +275,8 @@ async def verify_wallet(
     del _nonce_store[address_lower]
     
     # 既存ウォレットチェック
-    existing_wallet = db.query(Wallet).filter(Wallet.address == request.address).first()
+    result = await db.execute(select(Wallet).where(Wallet.address == request.address))
+    existing_wallet = result.scalar_one_or_none()
     if existing_wallet:
         return WalletVerifyResponse(
             success=True,
@@ -294,14 +299,15 @@ async def verify_wallet(
 
 
 @router.post("/password-reset")
-async def request_password_reset(request: PasswordResetRequest, db: Session = Depends(get_db)):
+async def request_password_reset(request: PasswordResetRequest, db: AsyncSession = Depends(get_db)):
     """
     パスワードリセットリクエスト
     
     - メールアドレスに対してリセットトークンを生成
     - 実際のメール送信は別途実装
     """
-    user = db.query(User).filter(User.email == request.email).first()
+    result = await db.execute(select(User).where(User.email == request.email))
+    user = result.scalar_one_or_none()
     if not user:
         # セキュリティ上、ユーザーが存在しなくても同じレスポンスを返す
         return {"message": "パスワードリセットのメールを送信しました（登録されている場合）"}
@@ -313,7 +319,7 @@ async def request_password_reset(request: PasswordResetRequest, db: Session = De
 
 
 @router.post("/password-reset/confirm")
-async def confirm_password_reset(request: PasswordResetConfirmRequest, db: Session = Depends(get_db)):
+async def confirm_password_reset(request: PasswordResetConfirmRequest, db: AsyncSession = Depends(get_db)):
     """
     パスワードリセット確認
     
@@ -328,11 +334,12 @@ async def confirm_password_reset(request: PasswordResetConfirmRequest, db: Sessi
     if not is_valid:
         raise HTTPException(status_code=400, detail=error_msg)
     
-    user = db.query(User).filter(User.id == user_id).first()
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=400, detail="ユーザーが見つかりません")
     
     user.password_hash = auth_service.hash_password(request.new_password)
-    db.commit()
+    await db.commit()
     
     return {"message": "パスワードが正常に変更されました"}

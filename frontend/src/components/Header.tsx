@@ -2,14 +2,12 @@
  * LexFlow Protocol - Header Component
  */
 import { Link } from 'react-router-dom';
-import { Wallet, ChevronDown, Zap, User, LogIn } from 'lucide-react';
+import { Wallet, ChevronDown, Zap } from 'lucide-react';
 import { useWallet } from '../contexts/WalletContext';
-import { useAuth } from '../contexts/AuthContext';  // V3: 認証コンテキスト
 import './Header.css';
 
 export function Header() {
     const { isConnected, address, chainId, connect, isLoading } = useWallet();
-    const { isAuthenticated, user } = useAuth();  // V3: 認証状態
 
     const formatAddress = (addr: string) => {
         return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
