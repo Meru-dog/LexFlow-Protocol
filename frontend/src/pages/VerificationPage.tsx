@@ -1,4 +1,3 @@
-import React from 'react';
 import ZKOnboarding from '../components/zk/ZKOnboarding';
 import './VerificationPage.css';
 
