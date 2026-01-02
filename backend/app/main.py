@@ -11,6 +11,7 @@ from contextlib import asynccontextmanager  # 非同期コンテキストマネ�
 from app.core.config import settings  # アプリケーション設定の読み込み
 from app.core.database import engine, Base  # データベースエンジンとベースモデル
 from app.api import contracts, judgments, obligations, versions, signatures, redline, zk_proofs  # APIルーターのインポート（V2: ...に加えzk_proofsを追加）
+from app.api import auth, rbac, approvals, audit, notifications  # V3: 認証、RBAC、承認、監査、通知API
 
 
 @asynccontextmanager
@@ -23,11 +24,11 @@ async def lifespan(app: FastAPI):
     try:
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)  # 全テーブルを作成
-        print("✅ Database connected and tables created")
+        print("✅ データベースは接続され、テーブルは作成されました")
     except Exception as e:
         # データベース未接続でも起動を継続（開発用）
-        print(f"⚠️ Database connection failed: {e}")
-        print("   Running without database - some features will be unavailable")
+        print(f"⚠️ データベース接続に失敗しました: {e}")
+        print("   開発用: データベース接続なしで起動します - 一部の機能は使用できません")
     
     yield  # アプリケーション実行中
     
@@ -51,6 +52,7 @@ app = FastAPI(
     - ⚖️ 弁護士承認ワークフロー
     - 💰 Ethereum経由の自動JPYC決済
     - 🔗 オンチェーン取引追跡
+    - 🔐 V3: 認証・RBAC・承認フロー・監査証跡・通知
     """,
     lifespan=lifespan,  # ライフサイクル管理関数を設定
 )
@@ -117,6 +119,13 @@ app.include_router(versions.router, prefix="/api/v1")     # V2: 契約版管理A
 app.include_router(signatures.router, prefix="/api/v1")   # V2: 署名API（F3）
 app.include_router(redline.router, prefix="/api/v1")      # V2: Redline比較API（F4）
 app.include_router(zk_proofs.router, prefix="/api/v1")    # V2: ZK証跡API（F7/F9）
+
+# V3: 認証・RBAC・承認・監査・通知API
+app.include_router(auth.router, prefix="/api/v1")          # V3: 認証API
+app.include_router(rbac.router, prefix="/api/v1")          # V3: RBAC・ACL API
+app.include_router(approvals.router, prefix="/api/v1")     # V3: 承認フローAPI
+app.include_router(audit.router, prefix="/api/v1")         # V3: 監査証跡API
+app.include_router(notifications.router, prefix="/api/v1") # V3: 通知API
 
 # 静的ファイルの提供 (PDF表示用)
 os.makedirs("uploads", exist_ok=True)
