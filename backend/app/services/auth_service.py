@@ -36,7 +36,14 @@ class AuthService:
     @staticmethod
     def verify_password(plain_password: str, hashed_password: str) -> bool:
         """パスワードを検証"""
-        return pwd_context.verify(plain_password, hashed_password)
+        try:
+            # Bcrypt has a 72-byte limit. If it's longer, it shouldn't have been hashed anyway
+            # based on current validation, but we catch the error to avoid 500.
+            if len(plain_password.encode()) > 72:
+                return False
+            return pwd_context.verify(plain_password, hashed_password)
+        except Exception:
+            return False
     
     @staticmethod
     def validate_password_strength(password: str) -> Tuple[bool, str]:
@@ -49,6 +56,8 @@ class AuthService:
             return False, "パスワードには小文字を含む必要があります"
         if not any(c.isdigit() for c in password):
             return False, "パスワードには数字を含む必要があります"
+        if len(password.encode()) > 72:
+            return False, "パスワードが長すぎます。72バイト以内にしてください（半角英数72文字、和文24文字程度）。"
         return True, ""
     
     # ===== JWT関連 =====
