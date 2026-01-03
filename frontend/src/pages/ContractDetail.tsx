@@ -14,13 +14,13 @@ import {
     Calendar,
     History as HistoryIcon
 } from 'lucide-react';
-import { api, getFileUrl } from '../services/api';
+import { api, getFileUrl, API_BASE } from '../services/api';
 import { useWallet } from '../contexts/WalletContext';
 import { useAuth, authFetch } from '../contexts/AuthContext';
 import type { ContractWithDetails, Condition } from '../types';
 import './ContractDetail.css';
 
-const API_BASE = '/api/v1';
+// const API_BASE = '/api/v1';
 
 export function ContractDetail() {
     const { id } = useParams<{ id: string }>();

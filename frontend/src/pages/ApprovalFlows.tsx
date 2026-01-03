@@ -4,9 +4,10 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth, authFetch } from '../contexts/AuthContext';
+import { API_BASE } from '../services/api';
 import './ApprovalFlows.css';
 
-const API_BASE = '/api/v1';
+// const API_BASE = '/api/v1';
 
 interface ApprovalFlow {
     id: string;

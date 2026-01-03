@@ -3,9 +3,10 @@
  */
 import React, { useState, useEffect } from 'react';
 import { useAuth, authFetch } from '../contexts/AuthContext';
+import { API_BASE } from '../services/api';
 import './WorkspaceSettings.css';
 
-const API_BASE = '/api/v1';
+// const API_BASE = '/api/v1';
 
 interface Role {
     id: string;

@@ -6,10 +6,10 @@ import { useNavigate } from 'react-router-dom';
 import { Upload, FileText, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
 import { useWallet } from '../contexts/WalletContext';
 import { useAuth, authFetch } from '../contexts/AuthContext';
-import { api } from '../services/api';
+import { api, API_BASE } from '../services/api';
 import './Upload.css';
 
-const API_BASE = '/api/v1';
+// const API_BASE = '/api/v1';
 
 // コントラクトアップロードページ
 export function UploadPage() {

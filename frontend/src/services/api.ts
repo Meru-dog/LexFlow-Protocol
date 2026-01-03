@@ -23,7 +23,7 @@ const getApiBaseUrl = () => {
     return 'http://localhost:8000/api/v1';
 };
 
-const API_BASE = getApiBaseUrl();
+export const API_BASE = getApiBaseUrl();
 const BASE_URL = API_BASE.replace('/api/v1', '');
 
 console.log('🔗 API Base URL:', API_BASE);

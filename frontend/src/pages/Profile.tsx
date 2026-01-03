@@ -2,10 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useWallet } from '../contexts/WalletContext';
-import { api } from '../services/api';
+import { api, API_BASE } from '../services/api';
 import './Auth.css';
 
-const API_BASE = '/api/v1';
+// const API_BASE = '/api/v1';
 
 export const ProfilePage: React.FC = () => {
     const navigate = useNavigate();

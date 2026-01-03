@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
+import { API_BASE } from '../services/api';
 
 // ===== 型定義 =====
 interface User {
@@ -21,7 +22,7 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 // ===== APIベースURL =====
-const API_BASE = '/api/v1';
+// const API_BASE = '/api/v1'; (Moved to services/api.ts for unified configuration)
 const SESSION_DURATION = 60 * 60 * 1000; // 1時間（ミリ秒）
 
 // ===== トークン管理 =====
