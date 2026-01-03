@@ -12,7 +12,7 @@ import os
 import shutil
 
 from app.core.database import get_db
-from app.models.models import Contract, Condition, ContractStatus, ConditionStatus
+from app.models.models import Contract, Condition, ContractStatus, ConditionStatus, Workspace, WorkspaceUser
 from app.schemas.schemas import (
     ContractCreate, ContractResponse, ContractDetail,
     ConditionCreate, ConditionResponse, ContractParseResponse
@@ -20,6 +20,7 @@ from app.schemas.schemas import (
 from app.services.contract_parser import contract_parser
 from app.services.blockchain_service import blockchain_service
 from app.services.version_service import version_service  # V2: F3機能
+from app.api.auth import get_current_user_id
 
 # ルーターの定義
 router = APIRouter(prefix="/contracts", tags=["Contracts"])
@@ -30,9 +31,10 @@ async def upload_contract(
     file: UploadFile = File(...), # PDFファイルのアップロード
     title: Optional[str] = Form(None), # コントラクトのタイトルの指定 (Form)
     payer_address: Optional[str] = Form(None), # 支払者のアドレスの指定 (Form)
-    lawyer_address: Optional[str] = Form(None), # 裁判のアドレスの指定 (Form)
+    lawyer_address: str = Form(...), # 裁判のアドレスの指定 (Form)
     total_amount: Optional[float] = Form(None), # 手動での総額指定 (Form)
     db: AsyncSession = Depends(get_db), # データベースセッション
+    current_user_id: str = Depends(get_current_user_id),
 ):
     """
     AIを使用してPDFファイルを解析し、コントラクトをアップロードする
@@ -75,20 +77,33 @@ async def upload_contract(
         # PDFコンテンツを書き込む（既に読み込んでいるため、メモリから書き込み）
         with open(file_path, "wb") as f:
             f.write(file_content)
-        print(f"📁 File saved to: {file_path}")
+        print(f"📁 ファイルを保存: {file_path}")
 
         # コントラクトレコードの作成
-        print("💾 Saving to database...")
+        print("💾 databaseに保存...")
+        # ユーザーの最初のワークスペースを取得
+        ws_result = await db.execute(
+            select(Workspace.id)
+            .join(WorkspaceUser)
+            .where(WorkspaceUser.user_id == current_user_id)
+            .limit(1)
+        )
+        workspace_id = ws_result.scalar_one_or_none()
+        
+        # コントラクトオブジェクトを作成
         contract = Contract(
             id=contract_id,
-            title=contract_title,
-            file_url=file_path,  # 相対パスとして保存
-            file_hash=file_hash,
-            payer_address=payer_address or "0x0000000000000000000000000000000000000000",
-            lawyer_address=lawyer_address if lawyer_address and lawyer_address != "" else "0x0000000000000000000000000000000000000000",
-            total_amount=final_total_amount,
+            workspace_id=workspace_id,  # ワークスペースIDを設定
+            title=parsed.title or title or "Untitled Contract",
+            parties=json.dumps(parsed.parties),
+            payer_address=payer_address if payer_address and payer_address != "" else None,
+            lawyer_address=lawyer_address if lawyer_address and lawyer_address != "" else None,
+            total_amount=final_total_amount if final_total_amount is not None else parsed.total_value,
+            summary=parsed.summary,
             status=ContractStatus.PENDING,
             parsed_data=json.dumps(parsed.model_dump()),
+            file_url=file_path, # Add file_url back
+            file_hash=file_hash, # Add file_hash back
         )
         
         # コントラクトレコードをデータベースに保存
@@ -139,12 +154,18 @@ async def upload_contract(
 @router.get("/", response_model=List[ContractResponse])
 async def list_contracts(
     status: str = None,
+    workspace_id: str = None,
     db: AsyncSession = Depends(get_db),
 ):
     query = select(Contract).options(selectinload(Contract.conditions))
     # 状態が指定されている場合は、その状態のコントラクトのみを取得
     if status:
         query = query.where(Contract.status == status)
+    
+    # ワークスペースが指定されている場合は、そのワークスペースのコントラクトのみを取得
+    if workspace_id:
+        query = query.where(Contract.workspace_id == workspace_id)
+
     # 作成日時で降順でソート
     query = query.order_by(Contract.created_at.desc())
     

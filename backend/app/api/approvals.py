@@ -8,17 +8,22 @@ import secrets
 from datetime import datetime, timedelta
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from pydantic import BaseModel, Field
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, and_, or_
+from sqlalchemy.orm import selectinload
 import json
 
 from app.core.database import get_db
+from app.api.auth import get_current_user_id
 from app.models.models import (
     ApprovalFlow, ApprovalRequest, ApprovalTask, MagicLink,
     ApprovalRequestStatus, ApprovalTaskStatus, ACLSubjectType,
-    Contract, Workspace
+    Contract, Workspace, User
 )
+from app.services.notification_service import notification_service
+
 
 
 router = APIRouter(prefix="/approvals", tags=["承認管理 (Approvals)"])
@@ -39,6 +44,7 @@ class ApprovalFlowCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
     description: Optional[str] = None
     stages: List[ApprovalStage]
+    is_active: bool = True  # デフォルトはTrue
 
 
 class ApprovalFlowResponse(BaseModel):
@@ -67,13 +73,28 @@ class ApprovalRequestResponse(BaseModel):
     """承認リクエストレスポンス"""
     id: str
     contract_id: str
-    flow_id: Optional[str]
-    due_at: Optional[datetime]
+    flow_id: Optional[str] = None
+    due_at: Optional[datetime] = None
     status: str
-    message: Optional[str]
+    message: Optional[str] = None
     created_by: str
     created_at: datetime
     tasks: List[dict] = []
+
+
+class ApprovalTaskResponse(BaseModel):
+    """承認タスクレスポンス"""
+    id: str
+    request_id: str
+    stage: int
+    order: int
+    assignee_type: str
+    assignee_id: str
+    status: str
+    acted_at: Optional[datetime] = None
+    comment: Optional[str] = None
+    contract_title: Optional[str] = None
+    created_at: datetime
 
 
 class ApprovalTaskAction(BaseModel):
@@ -94,12 +115,13 @@ class MagicLinkResponse(BaseModel):
 # ===== 承認フローテンプレートエンドポイント =====
 
 @router.get("/flows", response_model=List[ApprovalFlowResponse])
-async def list_approval_flows(workspace_id: str, db: Session = Depends(get_db)):
+async def list_approval_flows(workspace_id: str, db: AsyncSession = Depends(get_db)):
     """ワークスペースの承認フローテンプレート一覧を取得"""
-    flows = db.query(ApprovalFlow).filter(
+    result = await db.execute(select(ApprovalFlow).where(
         ApprovalFlow.workspace_id == workspace_id,
         ApprovalFlow.is_active == True
-    ).all()
+    ))
+    flows = result.scalars().all()
     
     return [
         ApprovalFlowResponse(
@@ -116,10 +138,11 @@ async def list_approval_flows(workspace_id: str, db: Session = Depends(get_db)):
 
 
 @router.post("/flows", response_model=ApprovalFlowResponse, status_code=status.HTTP_201_CREATED)
-async def create_approval_flow(workspace_id: str, request: ApprovalFlowCreate, db: Session = Depends(get_db)):
+async def create_approval_flow(workspace_id: str, request: ApprovalFlowCreate, db: AsyncSession = Depends(get_db)):
     """承認フローテンプレートを作成"""
     # ワークスペース存在確認
-    workspace = db.query(Workspace).filter(Workspace.id == workspace_id).first()
+    result_ws = await db.execute(select(Workspace).where(Workspace.id == workspace_id))
+    workspace = result_ws.scalar_one_or_none()
     if not workspace:
         raise HTTPException(status_code=404, detail="ワークスペースが見つかりません")
     
@@ -133,8 +156,61 @@ async def create_approval_flow(workspace_id: str, request: ApprovalFlowCreate, d
         is_active=True
     )
     db.add(flow)
-    db.commit()
-    db.refresh(flow)
+    await db.commit()
+    await db.refresh(flow)
+    
+    return ApprovalFlowResponse(
+        id=flow.id,
+        workspace_id=flow.workspace_id,
+        name=flow.name,
+        description=flow.description,
+        stages=json.loads(flow.definition_json),
+        is_active=flow.is_active,
+        created_at=flow.created_at
+    )
+
+
+@router.put("/flows/{flow_id}", response_model=ApprovalFlowResponse)
+async def update_approval_flow(
+    flow_id: str,
+    request: ApprovalFlowCreate,
+    db: AsyncSession = Depends(get_db)
+):
+    """承認フローテンプレートを更新"""
+    result = await db.execute(select(ApprovalFlow).where(ApprovalFlow.id == flow_id))
+    flow = result.scalar_one_or_none()
+    if not flow:
+        raise HTTPException(status_code=404, detail="承認フローが見つかりません")
+    
+    # 更新
+    flow.name = request.name
+    flow.description = request.description
+    flow.is_active = request.is_active
+    
+    if request.stages:
+        try:
+            # Convert Pydantic models or dicts to JSON
+            stages_data = []
+            for s in request.stages:
+                if isinstance(s, dict):
+                    stages_data.append(s)
+                elif hasattr(s, 'model_dump'):
+                    stages_data.append(s.model_dump())
+                elif hasattr(s, 'dict'):
+                    stages_data.append(s.dict())
+                else:
+                    stages_data.append(s)
+            flow.definition_json = json.dumps(stages_data)
+        except Exception as e:
+            import traceback
+            print(f"Error processing stages: {e}")
+            print(f"Stages type: {type(request.stages)}")
+            print(f"Stages content: {request.stages}")
+            print(traceback.format_exc())
+            raise HTTPException(status_code=500, detail=f"Failed to process stages: {str(e)}")
+    
+    await db.commit()
+    await db.refresh(flow)
     
     return ApprovalFlowResponse(
         id=flow.id,
@@ -148,14 +224,15 @@ async def create_approval_flow(workspace_id: str, request: ApprovalFlowCreate, d
 
 
 @router.delete("/flows/{flow_id}")
-async def delete_approval_flow(flow_id: str, db: Session = Depends(get_db)):
+async def delete_approval_flow(flow_id: str, db: AsyncSession = Depends(get_db)):
     """承認フローテンプレートを無効化（論理削除）"""
-    flow = db.query(ApprovalFlow).filter(ApprovalFlow.id == flow_id).first()
+    result = await db.execute(select(ApprovalFlow).where(ApprovalFlow.id == flow_id))
+    flow = result.scalar_one_or_none()
     if not flow:
         raise HTTPException(status_code=404, detail="承認フローが見つかりません")
     
     flow.is_active = False
-    db.commit()
+    await db.commit()
     
     return {"message": "承認フローを無効化しました"}
 
@@ -165,8 +242,8 @@ async def delete_approval_flow(flow_id: str, db: Session = Depends(get_db)):
 @router.post("/requests", response_model=ApprovalRequestResponse, status_code=status.HTTP_201_CREATED)
 async def create_approval_request(
     request: ApprovalRequestCreate,
-    created_by: str,  # 実際はJWTから取得
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    created_by: str = Depends(get_current_user_id)
 ):
     """
     承認リクエストを作成
@@ -175,14 +252,16 @@ async def create_approval_request(
     - 直接指定時: stagesを指定
     """
     # 契約書存在確認
-    contract = db.query(Contract).filter(Contract.id == request.contract_id).first()
+    result_contract = await db.execute(select(Contract).where(Contract.id == request.contract_id))
+    contract = result_contract.scalar_one_or_none()
     if not contract:
         raise HTTPException(status_code=404, detail="契約書が見つかりません")
     
     # ステージ定義を取得
     stages = []
     if request.flow_id:
-        flow = db.query(ApprovalFlow).filter(ApprovalFlow.id == request.flow_id).first()
+        result_flow = await db.execute(select(ApprovalFlow).where(ApprovalFlow.id == request.flow_id))
+        flow = result_flow.scalar_one_or_none()
         if not flow:
             raise HTTPException(status_code=404, detail="承認フローが見つかりません")
         stages = json.loads(flow.definition_json)
@@ -206,7 +285,7 @@ async def create_approval_request(
         created_by=created_by
     )
     db.add(approval_request)
-    db.flush()
+    await db.flush()
     
     # 承認タスクを生成
     tasks = []
@@ -232,8 +311,43 @@ async def create_approval_request(
                 "status": "pending"
             })
     
-    db.commit()
-    db.refresh(approval_request)
+    await db.commit()
+    await db.refresh(approval_request)
+    
+    # 承認者への通知送信（非同期、失敗しても処理は継続）
+    try:
+        # 最初のステージ（stage=1）の承認者に通知
+        stage_1_tasks = [t for t in tasks if t["stage"] == 1]
+        for task_info in stage_1_tasks:
+            if task_info["assignee_type"] == "user":
+                # ユーザーを取得
+                result_user = await db.execute(
+                    select(User).where(User.id == task_info["assignee_id"])
+                )
+                user = result_user.scalar_one_or_none()
+                if user:
+                    # 通知ペイロード作成
+                    from app.core.config import settings
+                    approval_url = f"{settings.FRONTEND_URL}/approvals"
+                    
+                    payload = notification_service.create_approval_request_payload(
+                        contract_title=contract.title or f"契約ID: {contract.id}",
+                        requester_name=created_by[:8],  # 簡略化
+                        due_at=approval_request.due_at,
+                        approval_url=approval_url,
+                        message=approval_request.message
+                    )
+                    
+                    # ユーザーに通知（Email/Slack）
+                    await notification_service.notify_user(
+                        db=db,
+                        user=user,
+                        subject=f"承認依頼: {contract.title or '契約書'}",
+                        payload=payload
+                    )
+    except Exception as e:
+        # 通知失敗はログのみ、リクエスト作成は成功扱い
+        print(f"[NOTIFICATION ERROR] 承認依頼通知の送信に失敗しました: {str(e)}")
     
     return ApprovalRequestResponse(
         id=approval_request.id,
@@ -248,10 +362,53 @@ async def create_approval_request(
     )
 
 
+@router.get("/requests", response_model=List[ApprovalRequestResponse])
+async def list_approval_requests(
+    workspace_id: Optional[str] = None,
+    contract_id: Optional[str] = None,
+    db: AsyncSession = Depends(get_db)
+):
+    """承認リクエスト一覧を取得"""
+    query = select(ApprovalRequest).options(selectinload(ApprovalRequest.tasks))
+    
+    if workspace_id:
+        query = query.join(Contract).where(Contract.workspace_id == workspace_id)
+    if contract_id:
+        query = query.where(ApprovalRequest.contract_id == contract_id)
+        
+    result = await db.execute(query)
+    requests = result.scalars().all()
+    
+    return [
+        ApprovalRequestResponse(
+            id=r.id,
+            contract_id=r.contract_id,
+            flow_id=r.flow_id,
+            due_at=r.due_at,
+            status=r.status.value,
+            message=r.message,
+            created_by=r.created_by,
+            created_at=r.created_at,
+            tasks=[{
+                "id": t.id,
+                "stage": t.stage,
+                "status": t.status.value,
+                "comment": t.comment
+            } for t in r.tasks]
+        )
+        for r in requests
+    ]
+
+
 @router.get("/requests/{request_id}", response_model=ApprovalRequestResponse)
-async def get_approval_request(request_id: str, db: Session = Depends(get_db)):
+async def get_approval_request(request_id: str, db: AsyncSession = Depends(get_db)):
     """承認リクエストの詳細を取得"""
-    approval_request = db.query(ApprovalRequest).filter(ApprovalRequest.id == request_id).first()
+    result = await db.execute(
+        select(ApprovalRequest)
+        .options(selectinload(ApprovalRequest.tasks))
+        .where(ApprovalRequest.id == request_id)
+    )
+    approval_request = result.scalar_one_or_none()
     if not approval_request:
         raise HTTPException(status_code=404, detail="承認リクエストが見つかりません")
     
@@ -285,9 +442,10 @@ async def get_approval_request(request_id: str, db: Session = Depends(get_db)):
 # ===== 承認タスクアクションエンドポイント =====
 
 @router.post("/tasks/{task_id}/approve")
-async def approve_task(task_id: str, action: ApprovalTaskAction, db: Session = Depends(get_db)):
+async def approve_task(task_id: str, action: ApprovalTaskAction, db: AsyncSession = Depends(get_db)):
     """承認を実行"""
-    task = db.query(ApprovalTask).filter(ApprovalTask.id == task_id).first()
+    result = await db.execute(select(ApprovalTask).where(ApprovalTask.id == task_id))
+    task = result.scalar_one_or_none()
     if not task:
         raise HTTPException(status_code=404, detail="承認タスクが見つかりません")
     
@@ -300,17 +458,21 @@ async def approve_task(task_id: str, action: ApprovalTaskAction, db: Session = D
     task.signature_hash = action.signature
     
     # 次のステージへの進行チェック
-    _check_and_progress_request(task.request_id, db)
+    await _check_and_progress_request(task.request_id, db)
     
-    db.commit()
+    # 依頼者に通知
+    await _notify_requester_of_task_action(task, "APPROVED", db)
+    
+    await db.commit()
     
     return {"message": "承認しました", "task_id": task_id}
 
 
 @router.post("/tasks/{task_id}/reject")
-async def reject_task(task_id: str, action: ApprovalTaskAction, db: Session = Depends(get_db)):
+async def reject_task(task_id: str, action: ApprovalTaskAction, db: AsyncSession = Depends(get_db)):
     """否認を実行"""
-    task = db.query(ApprovalTask).filter(ApprovalTask.id == task_id).first()
+    result = await db.execute(select(ApprovalTask).where(ApprovalTask.id == task_id))
+    task = result.scalar_one_or_none()
     if not task:
         raise HTTPException(status_code=404, detail="承認タスクが見つかりません")
     
@@ -326,19 +488,24 @@ async def reject_task(task_id: str, action: ApprovalTaskAction, db: Session = De
     task.signature_hash = action.signature
     
     # リクエスト全体を否認
-    approval_request = db.query(ApprovalRequest).filter(ApprovalRequest.id == task.request_id).first()
+    result_req = await db.execute(select(ApprovalRequest).where(ApprovalRequest.id == task.request_id))
+    approval_request = result_req.scalar_one_or_none()
     if approval_request:
         approval_request.status = ApprovalRequestStatus.REJECTED
+        
+    # 依頼者に通知
+    await _notify_requester_of_task_action(task, "REJECTED", db)
     
-    db.commit()
+    await db.commit()
     
     return {"message": "否認しました", "task_id": task_id}
 
 
 @router.post("/tasks/{task_id}/return")
-async def return_task(task_id: str, action: ApprovalTaskAction, db: Session = Depends(get_db)):
+async def return_task(task_id: str, action: ApprovalTaskAction, db: AsyncSession = Depends(get_db)):
     """差戻しを実行"""
-    task = db.query(ApprovalTask).filter(ApprovalTask.id == task_id).first()
+    result = await db.execute(select(ApprovalTask).where(ApprovalTask.id == task_id))
+    task = result.scalar_one_or_none()
     if not task:
         raise HTTPException(status_code=404, detail="承認タスクが見つかりません")
     
@@ -353,20 +520,77 @@ async def return_task(task_id: str, action: ApprovalTaskAction, db: Session = De
     task.comment = action.comment
     
     # リクエスト全体を差戻し
-    approval_request = db.query(ApprovalRequest).filter(ApprovalRequest.id == task.request_id).first()
+    result_req = await db.execute(select(ApprovalRequest).where(ApprovalRequest.id == task.request_id))
+    approval_request = result_req.scalar_one_or_none()
     if approval_request:
         approval_request.status = ApprovalRequestStatus.RETURNED
+        
+    # 依頼者に通知
+    await _notify_requester_of_task_action(task, "RETURNED", db)
     
-    db.commit()
+    await db.commit()
     
     return {"message": "差戻ししました", "task_id": task_id}
 
 
-def _check_and_progress_request(request_id: str, db: Session):
+@router.get("/tasks", response_model=List[ApprovalTaskResponse])
+async def list_approval_tasks(
+    status: Optional[str] = Query(None),
+    user_id: str = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db)
+):
+    """承認タスク一覧を取得（自分に割り当てられたタスク）"""
+    query = select(ApprovalTask).options(
+        selectinload(ApprovalTask.request).selectinload(ApprovalRequest.contract)
+    )
+    
+    # 自分に割り当てられたタスクのみ
+    # assignee_type が USER の場合は assignee_id がユーザーID
+    # assignee_type が EXTERNAL の場合は assignee_id がウォレットアドレス
+    query = query.where(
+        and_(
+            ApprovalTask.assignee_type == 'USER',
+            ApprovalTask.assignee_id == user_id
+        )
+    )
+    
+    if status:
+        task_status = ApprovalTaskStatus[status.upper()]
+        query = query.where(ApprovalTask.status == task_status)
+    
+    result = await db.execute(query)
+    tasks = result.scalars().all()
+    
+    return [
+        {
+            "id": t.id,
+            "request_id": t.request_id,
+            "stage": t.stage,
+            "order": t.order,
+            "assignee_type": t.assignee_type.value,
+            "assignee_id": t.assignee_id,
+            "status": t.status.value,
+            "created_at": t.created_at,
+            # 関連するリクエスト情報も少し付与
+            "contract_title": t.request.contract.title if t.request and t.request.contract else "不明な契約"
+        }
+        for t in tasks
+    ]
+
+
+async def _check_and_progress_request(request_id: str, db: AsyncSession):
     """
     承認リクエストの進行状況をチェックし、必要に応じてステータスを更新
     """
-    approval_request = db.query(ApprovalRequest).filter(ApprovalRequest.id == request_id).first()
+    result = await db.execute(
+        select(ApprovalRequest)
+        .options(
+            selectinload(ApprovalRequest.tasks),
+            selectinload(ApprovalRequest.contract)
+        )
+        .where(ApprovalRequest.id == request_id)
+    )
+    approval_request = result.scalar_one_or_none()
     if not approval_request:
         return
     
@@ -376,6 +600,24 @@ def _check_and_progress_request(request_id: str, db: Session):
     all_approved = all(t.status == ApprovalTaskStatus.APPROVED for t in tasks)
     if all_approved:
         approval_request.status = ApprovalRequestStatus.APPROVED
+        
+        # 最終承認の通知を依頼者に送信
+        try:
+            result_user = await db.execute(select(User).where(User.id == approval_request.created_by))
+            requester = result_user.scalar_one_or_none()
+            if requester:
+                from app.core.config import settings
+                payload = notification_service.create_task_status_changed_payload(
+                    contract_title=approval_request.contract.title or "契約書",
+                    assignee_name="最終承認",
+                    action="APPROVED",
+                    comment="すべての承認プロセスが完了しました",
+                    request_url=f"{settings.FRONTEND_URL}/contracts/{approval_request.contract_id}"
+                )
+                await notification_service.notify_user(db, requester, "最終承認されました", payload)
+        except Exception as e:
+            print(f"[NOTIFICATION ERROR] 最終承認通知に失敗しました: {str(e)}")
+            
         return
     
     # 否認または差戻しがあるか確認
@@ -386,6 +628,51 @@ def _check_and_progress_request(request_id: str, db: Session):
         approval_request.status = ApprovalRequestStatus.REJECTED
     elif has_returned:
         approval_request.status = ApprovalRequestStatus.RETURNED
+    else:
+        # 次のステージへの通知が必要かチェック
+        # 全てのタスクのうち、完了していない最小のステージを特定
+        # (すでに全承認済みチェックは上で通っているので、必ず incomplete なステージがある)
+        completed_stages = {t.stage for t in tasks if t.status == ApprovalTaskStatus.APPROVED}
+        all_stages = {t.stage for t in tasks}
+        
+        # 各ステージが完全に承認されているか確認
+        stage_status = {}
+        for s in all_stages:
+            stage_tasks = [t for t in tasks if t.stage == s]
+            stage_status[s] = all(t.status == ApprovalTaskStatus.APPROVED for t in stage_tasks)
+            
+        # 承認が完了したステージの直後のステージを特定
+        # 簡易的に：最小の未完了ステージのタスクにまだ通知が行われていなければ通知する
+        current_min_incomplete_stage = min(s for s, complete in stage_status.items() if not complete)
+        
+        # このステージのタスクを取得して通知（初回の stage=1 は作成時に送信済みなので除外したいが、
+        # ここでは「ステージが1つ進んだタイミング」でそのステージ全員に送る）
+        # ※ 実際には重複送信を防ぐフラグ等が必要だが、現状は簡易的に実装
+        
+        # 前のステージが全て完了した直後のタイミングか判定
+        # (全てのステージが1から順に並んでいると仮定)
+        if current_min_incomplete_stage > 1:
+            prev_stage_all_complete = stage_status.get(current_min_incomplete_stage - 1, False)
+            if prev_stage_all_complete:
+                # このステージの担当者に通知
+                try:
+                    next_tasks = [t for t in tasks if t.stage == current_min_incomplete_stage]
+                    for task in next_tasks:
+                        if task.assignee_type == ACLSubjectType.USER:
+                            res_u = await db.execute(select(User).where(User.id == task.assignee_id))
+                            u = res_u.scalar_one_or_none()
+                            if u:
+                                from app.core.config import settings
+                                payload = notification_service.create_approval_request_payload(
+                                    contract_title=approval_request.contract.title or "契約書",
+                                    requester_name="LexFlow",
+                                    due_at=approval_request.due_at,
+                                    approval_url=f"{settings.FRONTEND_URL}/approvals",
+                                    message=approval_request.message
+                                )
+                                await notification_service.notify_user(db, u, "承認依頼が届いています", payload)
+                except Exception as e:
+                    print(f"[NOTIFICATION ERROR] 次ステージへの通知に失敗しました: {str(e)}")
 
 
 # ===== マジックリンクエンドポイント =====
@@ -394,7 +681,7 @@ def _check_and_progress_request(request_id: str, db: Session):
 async def create_magic_link(
     task_id: str,
     expires_hours: int = 72,
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """
     承認タスク用のマジックリンクを発行
@@ -402,16 +689,18 @@ async def create_magic_link(
     - 外部承認者向け
     - ワンタイムトークン（期限付き）
     """
-    task = db.query(ApprovalTask).filter(ApprovalTask.id == task_id).first()
+    result_task = await db.execute(select(ApprovalTask).where(ApprovalTask.id == task_id))
+    task = result_task.scalar_one_or_none()
     if not task:
         raise HTTPException(status_code=404, detail="承認タスクが見つかりません")
     
     # 既存の有効なリンクを失効
-    existing_links = db.query(MagicLink).filter(
+    result_links = await db.execute(select(MagicLink).where(
         MagicLink.task_id == task_id,
         MagicLink.revoked_at == None,
         MagicLink.consumed_at == None
-    ).all()
+    ))
+    existing_links = result_links.scalars().all()
     for link in existing_links:
         link.revoked_at = datetime.utcnow()
     
@@ -427,8 +716,8 @@ async def create_magic_link(
         expires_at=expires_at
     )
     db.add(magic_link)
-    db.commit()
-    db.refresh(magic_link)
+    await db.commit()
+    await db.refresh(magic_link)
     
     # URLを構築（本番環境では設定から読み込む）
     base_url = "https://lexflow.example.com"
@@ -444,7 +733,7 @@ async def create_magic_link(
 
 
 @router.post("/magic-link/{token}/consume")
-async def consume_magic_link(token: str, db: Session = Depends(get_db)):
+async def consume_magic_link(token: str, db: AsyncSession = Depends(get_db)):
     """
     マジックリンクを使用（検証）
     
@@ -453,7 +742,8 @@ async def consume_magic_link(token: str, db: Session = Depends(get_db)):
     """
     token_hash = hashlib.sha256(token.encode()).hexdigest()
     
-    magic_link = db.query(MagicLink).filter(MagicLink.token_hash == token_hash).first()
+    result_link = await db.execute(select(MagicLink).where(MagicLink.token_hash == token_hash))
+    magic_link = result_link.scalar_one_or_none()
     if not magic_link:
         raise HTTPException(status_code=404, detail="無効なリンクです")
     
@@ -468,10 +758,11 @@ async def consume_magic_link(token: str, db: Session = Depends(get_db)):
     
     # 使用済みにマーク
     magic_link.consumed_at = datetime.utcnow()
-    db.commit()
+    await db.commit()
     
     # タスク情報を取得
-    task = db.query(ApprovalTask).filter(ApprovalTask.id == magic_link.task_id).first()
+    result_task = await db.execute(select(ApprovalTask).where(ApprovalTask.id == magic_link.task_id))
+    task = result_task.scalar_one_or_none()
     
     return {
         "valid": True,
@@ -482,13 +773,70 @@ async def consume_magic_link(token: str, db: Session = Depends(get_db)):
 
 
 @router.delete("/magic-link/{link_id}")
-async def revoke_magic_link(link_id: str, db: Session = Depends(get_db)):
+async def revoke_magic_link(link_id: str, db: AsyncSession = Depends(get_db)):
     """マジックリンクを失効"""
-    magic_link = db.query(MagicLink).filter(MagicLink.id == link_id).first()
+    result = await db.execute(select(MagicLink).where(MagicLink.id == link_id))
+    magic_link = result.scalar_one_or_none()
     if not magic_link:
         raise HTTPException(status_code=404, detail="リンクが見つかりません")
     
     magic_link.revoked_at = datetime.utcnow()
-    db.commit()
+    await db.commit()
     
     return {"message": "リンクを失効しました"}
+
+
+async def _notify_requester_of_task_action(
+    task: ApprovalTask, 
+    action: str, 
+    db: AsyncSession
+):
+    """承認依頼者にタスクの結果を通知"""
+    try:
+        # リクエストと契約を取得
+        result_req = await db.execute(
+            select(ApprovalRequest)
+            .options(selectinload(ApprovalRequest.contract))
+            .where(ApprovalRequest.id == task.request_id)
+        )
+        request = result_req.scalar_one_or_none()
+        if not request:
+            return
+
+        # 依頼者（作成者）ユーザーを取得
+        result_user = await db.execute(select(User).where(User.id == request.created_by))
+        requester = result_user.scalar_one_or_none()
+        if not requester:
+            return
+
+        # 承認者の情報を取得
+        assignee_name = "承認者"
+        if task.assignee_type == ACLSubjectType.USER:
+            result_assignee = await db.execute(select(User).where(User.id == task.assignee_id))
+            assignee_user = result_assignee.scalar_one_or_none()
+            if assignee_user:
+                assignee_name = assignee_user.display_name or assignee_user.email
+        elif task.assignee_type == ACLSubjectType.EXTERNAL:
+            assignee_name = task.assignee_id # メールアドレス等
+
+        # 通知ペイロード作成
+        from app.core.config import settings
+        request_url = f"{settings.FRONTEND_URL}/contracts/{request.contract_id}"
+        
+        payload = notification_service.create_task_status_changed_payload(
+            contract_title=request.contract.title or "契約書",
+            assignee_name=assignee_name,
+            action=action,
+            comment=task.comment,
+            request_url=request_url
+        )
+
+        # ユーザーに通知
+        await notification_service.notify_user(
+            db=db,
+            user=requester,
+            subject=f"承認ステータス変更: {request.contract.title or '契約書'}",
+            payload=payload
+        )
+    except Exception as e:
+        print(f"[NOTIFICATION ERROR] 依頼者へのステータス変更通知に失敗しました: {str(e)}")

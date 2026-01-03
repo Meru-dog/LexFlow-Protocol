@@ -2,7 +2,7 @@
  * LexFlow Protocol - ワークスペース設定ページ (V3)
  */
 import React, { useState, useEffect } from 'react';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth, authFetch } from '../contexts/AuthContext';
 import './WorkspaceSettings.css';
 
 const API_BASE = '/api/v1';
@@ -29,8 +29,29 @@ interface Workspace {
     created_at: string;
 }
 
+const PERMISSION_LABELS: Record<string, string> = {
+    'workspace:view': 'ワークスペース閲覧',
+    'workspace:edit': 'ワークスペース編集',
+    'workspace:invite': 'メンバー招待',
+    'workspace:remove_user': 'メンバー削除',
+    'workspace:manage_roles': 'ロール管理',
+    'contract:view': '契約書閲覧',
+    'contract:create': '契約書作成',
+    'contract:edit': '契約書編集',
+    'contract:delete': '契約書削除',
+    'contract:manage_acl': 'アクセス制御管理 (ACL)',
+    'approval:view': '承認フロー閲覧',
+    'approval:create': '承認フロー作成',
+    'approval:create_flow': '承認フロー作成',
+    'approval:request': '承認依頼の作成',
+    'approval:approve': '契約書承認',
+    'audit:view': '監査ログ閲覧'
+};
+
+const translatePermission = (key: string) => PERMISSION_LABELS[key] || key;
+
 export const WorkspaceSettings: React.FC = () => {
-    const { /* user */ } = useAuth();  // TODO: Use for auth checks
+    const { user } = useAuth();
 
     const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
     const [selectedWorkspace, setSelectedWorkspace] = useState<string | null>(null);
@@ -42,15 +63,18 @@ export const WorkspaceSettings: React.FC = () => {
     // 新規ワークスペース作成
     const [showCreateModal, setShowCreateModal] = useState(false);
     const [newWorkspaceName, setNewWorkspaceName] = useState('');
+    const [newWorkspaceOwner, setNewWorkspaceOwner] = useState('');
+    const [newWorkspaceRole, setNewWorkspaceRole] = useState('Owner');
 
     // ユーザー招待
     const [showInviteModal, setShowInviteModal] = useState(false);
     const [inviteUserId, setInviteUserId] = useState('');
     const [inviteRoleId, setInviteRoleId] = useState('');
+    const [inviteRoleName, setInviteRoleName] = useState('');
 
     const loadRoles = async (workspaceId: string) => {
         try {
-            const res = await fetch(`${API_BASE}/workspaces/${workspaceId}/roles`);
+            const res = await authFetch(`${API_BASE}/workspaces/${workspaceId}/roles`);
             if (res.ok) {
                 const data = await res.json();
                 setRoles(data);
@@ -62,7 +86,7 @@ export const WorkspaceSettings: React.FC = () => {
 
     const loadMembers = async (workspaceId: string) => {
         try {
-            const res = await fetch(`${API_BASE}/workspaces/${workspaceId}/users`);
+            const res = await authFetch(`${API_BASE}/workspaces/${workspaceId}/users`);
             if (res.ok) {
                 const data = await res.json();
                 setMembers(data);
@@ -71,6 +95,29 @@ export const WorkspaceSettings: React.FC = () => {
             console.error('Failed to load members:', err);
         }
     };
+
+    const loadWorkspaces = async () => {
+        setIsLoading(true);
+        try {
+            const res = await authFetch(`${API_BASE}/workspaces`);
+            if (res.ok) {
+                const data = await res.json();
+                setWorkspaces(data);
+                if (data.length > 0 && !selectedWorkspace) {
+                    setSelectedWorkspace(data[0].id);
+                }
+            }
+        } catch (err) {
+            console.error('Failed to load workspaces:', err);
+            setError('ワークスペースの読み込みに失敗しました');
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        loadWorkspaces();
+    }, []);
 
     useEffect(() => {
         if (selectedWorkspace) {
@@ -86,10 +133,13 @@ export const WorkspaceSettings: React.FC = () => {
         setError('');
 
         try {
-            const res = await fetch(`${API_BASE}/workspaces`, {
+            const res = await authFetch(`${API_BASE}/workspaces`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name: newWorkspaceName })
+                body: JSON.stringify({
+                    name: newWorkspaceName,
+                    user_id: newWorkspaceOwner,
+                    role_name: newWorkspaceRole
+                })
             });
 
             if (!res.ok) throw new Error('ワークスペースの作成に失敗しました');
@@ -99,6 +149,8 @@ export const WorkspaceSettings: React.FC = () => {
             setSelectedWorkspace(newWs.id);
             setShowCreateModal(false);
             setNewWorkspaceName('');
+            setNewWorkspaceOwner('');
+            setNewWorkspaceRole('Owner');
         } catch (err) {
             setError(err instanceof Error ? err.message : 'エラーが発生しました');
         } finally {
@@ -107,24 +159,33 @@ export const WorkspaceSettings: React.FC = () => {
     };
 
     const handleInviteUser = async () => {
-        if (!selectedWorkspace || !inviteUserId || !inviteRoleId) return;
+        if (!selectedWorkspace || !inviteUserId || (!inviteRoleId && !inviteRoleName)) return;
 
         setIsLoading(true);
         setError('');
 
         try {
-            const res = await fetch(`${API_BASE}/workspaces/${selectedWorkspace}/users`, {
+            const res = await authFetch(`${API_BASE}/workspaces/${selectedWorkspace}/users`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ user_id: inviteUserId, role_id: inviteRoleId })
+                body: JSON.stringify({
+                    user_id: inviteUserId,
+                    role_id: (inviteRoleId && !inviteRoleId.startsWith('__')) ? inviteRoleId : undefined,
+                    role_name: inviteRoleId.startsWith('__')
+                        ? inviteRoleId.replace('__', '').charAt(0).toUpperCase() + inviteRoleId.slice(3)
+                        : (inviteRoleId === '' ? inviteRoleName : undefined)
+                })
             });
 
-            if (!res.ok) throw new Error('ユーザーの招待に失敗しました');
+            if (!res.ok) {
+                const errorData = await res.json();
+                throw new Error(errorData.detail || 'ユーザーの招待に失敗しました');
+            }
 
             await loadMembers(selectedWorkspace);
             setShowInviteModal(false);
             setInviteUserId('');
             setInviteRoleId('');
+            setInviteRoleName('');
         } catch (err) {
             setError(err instanceof Error ? err.message : 'エラーが発生しました');
         } finally {
@@ -165,9 +226,12 @@ export const WorkspaceSettings: React.FC = () => {
                     <h1>🏢 ワークスペース設定</h1>
                     <button
                         className="create-workspace-btn"
-                        onClick={() => setShowCreateModal(true)}
+                        onClick={() => {
+                            setNewWorkspaceOwner(user?.id || '');
+                            setShowCreateModal(true);
+                        }}
                     >
-                        ➕ 新規作成
+                        ➕ ワークスペースを新規作成
                     </button>
                 </div>
 
@@ -209,7 +273,7 @@ export const WorkspaceSettings: React.FC = () => {
                                             className="section-action-btn"
                                             onClick={() => setShowInviteModal(true)}
                                         >
-                                            ➕ 招待
+                                            ➕ メンバーを登録
                                         </button>
                                     </div>
 
@@ -247,14 +311,11 @@ export const WorkspaceSettings: React.FC = () => {
                                                     <span className="role-name">{role.name}</span>
                                                     {role.is_custom && <span className="custom-badge">カスタム</span>}
                                                 </div>
-                                                <div className="role-permissions">
-                                                    {role.permissions.slice(0, 3).map(p => (
-                                                        <span key={p} className="permission-tag">{p}</span>
+                                                <ul className="role-permissions-list">
+                                                    {role.permissions.map(p => (
+                                                        <li key={p}>{translatePermission(p)}</li>
                                                     ))}
-                                                    {role.permissions.length > 3 && (
-                                                        <span className="permission-more">+{role.permissions.length - 3}</span>
-                                                    )}
-                                                </div>
+                                                </ul>
                                             </div>
                                         ))}
                                     </div>
@@ -278,6 +339,30 @@ export const WorkspaceSettings: React.FC = () => {
                                     placeholder="例: 法務部門"
                                 />
                             </div>
+                            <div className="form-group">
+                                <label>管理者（ユーザーID）</label>
+                                <input
+                                    type="text"
+                                    value={newWorkspaceOwner}
+                                    onChange={e => setNewWorkspaceOwner(e.target.value)}
+                                    placeholder="ユーザーIDを入力"
+                                />
+                                <small style={{ color: '#64748b', marginTop: '0.5rem', display: 'block' }}>
+                                    デフォルトであなたがオーナーとして登録されます
+                                </small>
+                            </div>
+                            <div className="form-group">
+                                <label>付与するロール</label>
+                                <select
+                                    value={newWorkspaceRole}
+                                    onChange={e => setNewWorkspaceRole(e.target.value)}
+                                >
+                                    <option value="Owner">👑 Owner (全権限)</option>
+                                    <option value="Admin">⚙️ Admin (管理)</option>
+                                    <option value="Manager">📊 Manager (運用)</option>
+                                    <option value="Member">👤 Member (一般)</option>
+                                </select>
+                            </div>
                             <div className="modal-actions">
                                 <button className="cancel-btn" onClick={() => setShowCreateModal(false)}>
                                     キャンセル
@@ -285,9 +370,9 @@ export const WorkspaceSettings: React.FC = () => {
                                 <button
                                     className="submit-btn"
                                     onClick={handleCreateWorkspace}
-                                    disabled={!newWorkspaceName.trim() || isLoading}
+                                    disabled={!newWorkspaceName.trim() || !newWorkspaceOwner.trim() || isLoading}
                                 >
-                                    {isLoading ? '作成中...' : '作成'}
+                                    {isLoading ? '作成中...' : 'ワークスペースを作成'}
                                 </button>
                             </div>
                         </div>
@@ -298,30 +383,73 @@ export const WorkspaceSettings: React.FC = () => {
                 {showInviteModal && (
                     <div className="modal-overlay" onClick={() => setShowInviteModal(false)}>
                         <div className="modal-content" onClick={e => e.stopPropagation()}>
-                            <h2>ユーザー招待</h2>
                             <div className="form-group">
-                                <label>ユーザーID</label>
+                                <label>招待する名前（またはメールアドレス）</label>
                                 <input
                                     type="text"
                                     value={inviteUserId}
                                     onChange={e => setInviteUserId(e.target.value)}
-                                    placeholder="ユーザーIDを入力"
+                                    placeholder="例: 田中 太郎, test@example.com など"
                                 />
+                                <small style={{ color: '#64748b', marginTop: '0.4rem', display: 'block' }}>
+                                    システムに存在しない名前を入力した場合、自動的に新規登録されます
+                                </small>
                             </div>
                             <div className="form-group">
-                                <label>ロール</label>
+                                <label>ロールを選択</label>
                                 <select
                                     value={inviteRoleId}
-                                    onChange={e => setInviteRoleId(e.target.value)}
+                                    onChange={e => {
+                                        const val = e.target.value;
+                                        setInviteRoleId(val);
+
+                                        if (val === '') {
+                                            setInviteRoleName('');
+                                        } else if (val.startsWith('__')) {
+                                            const standardName = val.replace('__', '').charAt(0).toUpperCase() + val.slice(3);
+                                            setInviteRoleName(standardName);
+                                        } else {
+                                            const role = roles.find(r => r.id === val);
+                                            if (role) setInviteRoleName(role.name);
+                                        }
+                                    }}
                                 >
-                                    <option value="">ロールを選択</option>
-                                    {roles.map(role => (
-                                        <option key={role.id} value={role.id}>
-                                            {getRoleIcon(role.name)} {role.name}
-                                        </option>
-                                    ))}
+                                    <optgroup label="カスタム入力を開始">
+                                        <option value="">ロール名を自由に入力する...</option>
+                                    </optgroup>
+
+                                    {roles.length > 0 && (
+                                        <optgroup label="作成済みのロール">
+                                            {roles.map(role => (
+                                                <option key={role.id} value={role.id}>
+                                                    {getRoleIcon(role.name)} {role.name}
+                                                </option>
+                                            ))}
+                                        </optgroup>
+                                    )}
+
+                                    <optgroup label="標準ロールから選ぶ">
+                                        <option value="__owner">👑 Owner</option>
+                                        <option value="__admin">⚙️ Admin</option>
+                                        <option value="__manager">📊 Manager</option>
+                                        <option value="__member">👤 Member</option>
+                                    </optgroup>
                                 </select>
                             </div>
+                            {inviteRoleId === '' && (
+                                <div className="form-group">
+                                    <label>ロール名を入力</label>
+                                    <input
+                                        type="text"
+                                        value={inviteRoleName}
+                                        onChange={e => setInviteRoleName(e.target.value)}
+                                        placeholder="例: ゲスト, 閲覧者 など"
+                                    />
+                                    <small style={{ color: '#64748b', marginTop: '0.4rem', display: 'block' }}>
+                                        新しい役職名を入力すると、自動的に作成されます
+                                    </small>
+                                </div>
+                            )}
                             <div className="modal-actions">
                                 <button className="cancel-btn" onClick={() => setShowInviteModal(false)}>
                                     キャンセル
@@ -329,16 +457,16 @@ export const WorkspaceSettings: React.FC = () => {
                                 <button
                                     className="submit-btn"
                                     onClick={handleInviteUser}
-                                    disabled={!inviteUserId || !inviteRoleId || isLoading}
+                                    disabled={!inviteUserId || (inviteRoleId === '' && !inviteRoleName.trim()) || isLoading}
                                 >
-                                    {isLoading ? '招待中...' : '招待'}
+                                    {isLoading ? '登録中...' : 'メンバーを登録'}
                                 </button>
                             </div>
                         </div>
                     </div>
                 )}
             </div>
-        </div>
+        </div >
     );
 };
 

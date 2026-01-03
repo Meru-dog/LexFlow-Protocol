@@ -11,7 +11,7 @@ from contextlib import asynccontextmanager  # 非同期コンテキストマネ�
 from app.core.config import settings  # アプリケーション設定の読み込み
 from app.core.database import engine, Base  # データベースエンジンとベースモデル
 from app.api import contracts, judgments, obligations, versions, signatures, redline, zk_proofs  # APIルーターのインポート（V2: ...に加えzk_proofsを追加）
-from app.api import auth, rbac, approvals, audit, notifications  # V3: 認証、RBAC、承認、監査、通知API
+from app.api import auth, rbac, approvals, audit, notifications, users  # V3: 認証、RBAC、承認、監査、通知、ユーザーAPI
 
 
 @asynccontextmanager
@@ -126,6 +126,7 @@ app.include_router(rbac.router, prefix="/api/v1")          # V3: RBAC・ACL API
 app.include_router(approvals.router, prefix="/api/v1")     # V3: 承認フローAPI
 app.include_router(audit.router, prefix="/api/v1")         # V3: 監査証跡API
 app.include_router(notifications.router, prefix="/api/v1") # V3: 通知API
+app.include_router(users.router, prefix="/api/v1")         # V3: ユーザープロフィールAPI
 
 # 静的ファイルの提供 (PDF表示用)
 os.makedirs("uploads", exist_ok=True)

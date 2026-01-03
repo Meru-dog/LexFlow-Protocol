@@ -54,6 +54,17 @@
     display: flex;
     align-items: center;
     gap: var(--space-1);
+    overflow-x: auto;
+    white-space: nowrap;
+    scrollbar-width: none;
+    /* Firefox */
+    -ms-overflow-style: none;
+    /* IE and Edge */
+}
+
+.nav::-webkit-scrollbar {
+    display: none;
+    /* Chrome, Safari, Edge */
 }
 
 .nav-link {
@@ -80,6 +91,37 @@
     display: flex;
     align-items: center;
     gap: var(--space-3);
+    flex-shrink: 0;
+}
+
+.logout-btn {
+    background: transparent;
+    border: 1px solid var(--color-border);
+    color: #64748b;
+    padding: 0.5rem;
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all var(--transition-fast);
+}
+
+.logout-btn:hover {
+    background: #fee2e2;
+    border-color: #fecaca;
+    color: #ef4444;
+}
+
+.profile-link {
+    font-weight: 600 !important;
+    background: #f1f5f9;
+    color: #475569 !important;
+}
+
+.profile-link:hover {
+    background: #e2e8f0;
+    color: #1e293b !important;
 }
 
 .wallet-btn.connected {
@@ -102,43 +144,4 @@
     background: var(--color-success);
 }
 
-@media (max-width: 768px) {
-    .nav {
-        display: none;
-    }
-}
-
-/* V3: Auth buttons */
-.login-btn,
-.profile-btn {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.5rem 1rem;
-    border-radius: 8px;
-    font-size: 0.9rem;
-    font-weight: 500;
-    text-decoration: none;
-    transition: all 0.2s ease;
-}
-
-.login-btn {
-    background: var(--color-bg-secondary, #f1f5f9);
-    color: #1e293b;
-    border: 1px solid var(--color-border, #e2e8f0);
-}
-
-.login-btn:hover {
-    background: var(--color-bg-hover, #e2e8f0);
-    border-color: var(--color-accent-primary, #6366f1);
-}
-
-.profile-btn {
-    background: var(--color-accent-gradient, linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%));
-    color: white;
-}
-
-.profile-btn:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
-}
+/* V3: Auth buttons removed (now handled by ProtectedRoute and Logout button) */

@@ -4,11 +4,13 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { useWallet } from '../contexts/WalletContext';
 import './Auth.css';
 
 export const LoginPage: React.FC = () => {
     const navigate = useNavigate();
     const { login } = useAuth();
+    const { connect, isConnected, address } = useWallet();
 
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
@@ -22,9 +24,63 @@ export const LoginPage: React.FC = () => {
 
         try {
             await login(email, password);
-            navigate('/dashboard');
+            navigate('/');
         } catch (err) {
             setError(err instanceof Error ? err.message : 'ログインに失敗しました');
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const handleMetaMaskLogin = async () => {
+        setError('');
+        setIsLoading(true);
+
+        try {
+            // 1. ウォレット接続
+            if (!isConnected) {
+                await connect();
+            }
+
+            // 2. 接続されたウォレットアドレスを取得
+            const walletAddress = address || (await window.ethereum.request({ method: 'eth_accounts' }))[0];
+
+            if (!walletAddress) {
+                throw new Error('ウォレットアドレスが取得できませんでした');
+            }
+
+            // 3. バックエンドから nonce を取得
+            const nonceRes = await fetch('/api/v1/auth/wallet/nonce', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ address: walletAddress })
+            });
+
+            if (!nonceRes.ok) throw new Error('Nonce取得に失敗しました');
+            const { message } = await nonceRes.json();
+
+            // 4. MetaMaskで署名
+            const signature = await window.ethereum.request({
+                method: 'personal_sign',
+                params: [message, walletAddress]
+            });
+
+            // 5.署名検証
+            const verifyRes = await fetch('/api/v1/auth/wallet/verify', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ address: walletAddress, signature, message })
+            });
+
+            if (!verifyRes.ok) throw new Error('署名検証に失敗しました');
+
+            // 6. ログイン時刻を保存（MetaMaskログインも1時間制限を適用）
+            localStorage.setItem('login_timestamp', Date.now().toString());
+
+            // 7. Homeに遷移
+            navigate('/');
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'MetaMaskログインに失敗しました');
         } finally {
             setIsLoading(false);
         }
@@ -84,7 +140,11 @@ export const LoginPage: React.FC = () => {
                     <span>または</span>
                 </div>
 
-                <button className="wallet-connect-button">
+                <button
+                    className="wallet-connect-button"
+                    onClick={handleMetaMaskLogin}
+                    disabled={isLoading}
+                >
                     <span className="wallet-icon">🦊</span>
                     MetaMaskでログイン
                 </button>

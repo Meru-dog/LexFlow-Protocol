@@ -8,6 +8,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from pydantic import BaseModel, EmailStr, Field
+from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
@@ -93,6 +94,29 @@ class TokenRefreshRequest(BaseModel):
 
 # ===== 一時的なnonce保存（本番環境ではRedis等を使用） =====
 _nonce_store: dict = {}
+
+
+# ===== 認証依存関係 =====
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/v1/auth/login", auto_error=False)
+
+async def get_current_user_id(token: Optional[str] = Depends(oauth2_scheme)) -> str:
+    """現在のユーザーIDを取得する依存関係"""
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="認証トークンが必要です",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    user_id = auth_service.verify_access_token(token)
+    if not user_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="無効なトークンまたは期限切れです",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return user_id
 
 
 # ===== エンドポイント =====

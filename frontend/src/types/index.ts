@@ -17,6 +17,9 @@ export interface Contract {
     blockchain_tx_hash: string | null;
     created_at: string;
     condition_count: number;
+    workspace_id: string | null;
+    parties: string | null;
+    summary: string | null;
 }
 
 export interface ContractWithDetails extends Contract {

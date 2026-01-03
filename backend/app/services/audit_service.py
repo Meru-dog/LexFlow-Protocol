@@ -8,7 +8,8 @@ import uuid
 from datetime import datetime
 from typing import Optional, Dict, Any
 
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 
 from app.models.models import AuditEvent, AuditEventType
 
@@ -37,22 +38,24 @@ class AuditService:
         return hashlib.sha256(data.encode()).hexdigest()
     
     @staticmethod
-    def get_latest_hash(db: Session, workspace_id: Optional[str] = None) -> Optional[str]:
+    async def get_latest_hash(db: AsyncSession, workspace_id: Optional[str] = None) -> Optional[str]:
         """
         最新の監査イベントのハッシュを取得
         
         - ワークスペース指定時はそのワークスペース内の最新
         - 未指定時はグローバルで最新
         """
-        query = db.query(AuditEvent).order_by(AuditEvent.created_at.desc())
+        stmt = select(AuditEvent).order_by(AuditEvent.created_at.desc())
         if workspace_id:
-            query = query.filter(AuditEvent.workspace_id == workspace_id)
-        latest = query.first()
+            stmt = stmt.where(AuditEvent.workspace_id == workspace_id)
+        
+        result = await db.execute(stmt)
+        latest = result.scalars().first()
         return latest.hash if latest else None
     
     @staticmethod
-    def log_event(
-        db: Session,
+    async def log_event(
+        db: AsyncSession,
         event_type: AuditEventType,
         actor_id: Optional[str] = None,
         actor_wallet: Optional[str] = None,
@@ -75,7 +78,7 @@ class AuditService:
         detail_json = json.dumps(detail, ensure_ascii=False) if detail else None
         
         # 前のハッシュを取得
-        prev_hash = AuditService.get_latest_hash(db, workspace_id)
+        prev_hash = await AuditService.get_latest_hash(db, workspace_id)
         
         # 新しいハッシュを計算
         event_hash = AuditService.compute_event_hash(
@@ -110,7 +113,7 @@ class AuditService:
         return event
     
     @staticmethod
-    def verify_chain(db: Session, workspace_id: Optional[str] = None, limit: int = 100) -> Dict[str, Any]:
+    async def verify_chain(db: AsyncSession, workspace_id: Optional[str] = None, limit: int = 100) -> Dict[str, Any]:
         """
         ハッシュチェーンの整合性を検証
         
@@ -122,10 +125,12 @@ class AuditService:
                 "message": str
             }
         """
-        query = db.query(AuditEvent).order_by(AuditEvent.created_at.asc())
+        stmt = select(AuditEvent).order_by(AuditEvent.created_at.asc())
         if workspace_id:
-            query = query.filter(AuditEvent.workspace_id == workspace_id)
-        events = query.limit(limit).all()
+            stmt = stmt.where(AuditEvent.workspace_id == workspace_id)
+        
+        result = await db.execute(stmt.limit(limit))
+        events = result.scalars().all()
         
         if not events:
             return {

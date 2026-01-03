@@ -2,12 +2,14 @@
  * LexFlow Protocol - Header Component
  */
 import { Link } from 'react-router-dom';
-import { Wallet, ChevronDown, Zap } from 'lucide-react';
+import { Wallet, ChevronDown, Zap, LogOut } from 'lucide-react';
 import { useWallet } from '../contexts/WalletContext';
+import { useAuth } from '../contexts/AuthContext';
 import './Header.css';
 
 export function Header() {
     const { isConnected, address, chainId, connect, isLoading } = useWallet();
+    const { logout, isAuthenticated } = useAuth();
 
     const formatAddress = (addr: string) => {
         return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
@@ -38,22 +40,23 @@ export function Header() {
                     <Link to="/dashboard" className="nav-link">Dashboard</Link>
                     <Link to="/contracts" className="nav-link">Contracts</Link>
                     <Link to="/approvals" className="nav-link">Approvals</Link>
+                    <Link to="/workspaces" className="nav-link">Workspaces</Link>
+                    <Link to="/audit" className="nav-link">Audit Log</Link>
+                    <Link to="/notifications" className="nav-link">Notifications</Link>
                     <Link to="/verification" className="nav-link">Verification</Link>
                     <Link to="/upload" className="nav-link">Upload</Link>
                 </nav>
 
                 <div className="header-actions">
-                    {/* V3: 認証ステータス表示 */}
-                    {isAuthenticated ? (
-                        <Link to="/profile" className="profile-btn">
-                            <User size={18} />
-                            <span>{user?.displayName || user?.email?.split('@')[0] || 'Profile'}</span>
-                        </Link>
-                    ) : (
-                        <Link to="/login" className="login-btn">
-                            <LogIn size={18} />
-                            <span>ログイン</span>
-                        </Link>
+                    {isAuthenticated && (
+                        <>
+                            <Link to="/profile" className="nav-link profile-link" title="プロフィール">
+                                Profile
+                            </Link>
+                            <button className="logout-btn" onClick={logout} title="ログアウト">
+                                <LogOut size={18} />
+                            </button>
+                        </>
                     )}
 
                     {/* ウォレット接続ボタン */}
@@ -79,4 +82,3 @@ export function Header() {
         </header>
     );
 }
-

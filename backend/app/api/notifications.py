@@ -7,7 +7,8 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, func
 import json
 
 from app.core.database import get_db
@@ -135,7 +136,7 @@ async def list_notifications(
     status: Optional[str] = None,
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=200),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """
     通知履歴一覧を取得
@@ -143,26 +144,31 @@ async def list_notifications(
     - チャンネル、ステータスでフィルタ可能
     - ページネーション対応
     """
-    query = db.query(Notification)
+    stmt = select(Notification)
     
     if channel:
         try:
             ch = NotificationChannel(channel)
-            query = query.filter(Notification.channel == ch)
+            stmt = stmt.where(Notification.channel == ch)
         except ValueError:
             pass
     
     if status:
         try:
             st = NotificationStatus(status)
-            query = query.filter(Notification.status == st)
+            stmt = stmt.where(Notification.status == st)
         except ValueError:
             pass
     
-    total = query.count()
+    # 総数を取得
+    count_stmt = select(func.count()).select_from(stmt.subquery())
+    total_result = await db.execute(count_stmt)
+    total = total_result.scalar() or 0
     
     offset = (page - 1) * page_size
-    notifications = query.order_by(Notification.created_at.desc()).offset(offset).limit(page_size).all()
+    stmt = stmt.order_by(Notification.created_at.desc()).offset(offset).limit(page_size)
+    result = await db.execute(stmt)
+    notifications = result.scalars().all()
     
     return NotificationListResponse(
         notifications=[
@@ -186,7 +192,7 @@ async def list_notifications(
 
 
 @router.post("/test")
-async def send_test_notification(request: SendTestNotificationRequest, db: Session = Depends(get_db)):
+async def send_test_notification(request: SendTestNotificationRequest, db: AsyncSession = Depends(get_db)):
     """
     テスト通知を送信
     
@@ -234,11 +240,12 @@ async def send_test_notification(request: SendTestNotificationRequest, db: Sessi
 
 
 @router.post("/{notification_id}/retry")
-async def retry_notification(notification_id: str, db: Session = Depends(get_db)):
+async def retry_notification(notification_id: str, db: AsyncSession = Depends(get_db)):
     """
     失敗した通知を再送信
     """
-    notification = db.query(Notification).filter(Notification.id == notification_id).first()
+    result = await db.execute(select(Notification).where(Notification.id == notification_id))
+    notification = result.scalar_one_or_none()
     if not notification:
         raise HTTPException(status_code=404, detail="通知が見つかりません")
     
@@ -247,7 +254,7 @@ async def retry_notification(notification_id: str, db: Session = Depends(get_db)
     
     notification.status = NotificationStatus.RETRYING
     notification.retry_count += 1
-    db.commit()
+    await db.commit()
     
     payload = json.loads(notification.payload) if notification.payload else {}
     
@@ -279,7 +286,7 @@ async def retry_notification(notification_id: str, db: Session = Depends(get_db)
         notification.status = NotificationStatus.FAILED
         notification.error = str(e)
     
-    db.commit()
+    await db.commit()
     
     return {
         "success": notification.status == NotificationStatus.SENT,

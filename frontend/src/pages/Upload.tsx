@@ -1,17 +1,21 @@
 /**
  * LexFlow Protocol - コントラクトアップロードページ
  */
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Upload, FileText, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
 import { useWallet } from '../contexts/WalletContext';
+import { useAuth, authFetch } from '../contexts/AuthContext';
 import { api } from '../services/api';
 import './Upload.css';
+
+const API_BASE = '/api/v1';
 
 // コントラクトアップロードページ
 export function UploadPage() {
     const navigate = useNavigate(); // ページ遷移
     const { isConnected, address } = useWallet(); // ウォレット接続状態
+    const { user } = useAuth(); // 認証状態
     const [file, setFile] = useState<File | null>(null); // アップロードファイル
     const [dragOver, setDragOver] = useState(false); // ドラッグアンドドロップ状態
     const [title, setTitle] = useState(''); // コントラクトタイトル
@@ -20,6 +24,69 @@ export function UploadPage() {
     const [loading, setLoading] = useState(false); // ロード状態
     const [error, setError] = useState<string | null>(null); // エラー
     const [result, setResult] = useState<any>(null); // 結果
+
+    // 承認フロー関連
+    const [flows, setFlows] = useState<any[]>([]);
+    const [showApprovalModal, setShowApprovalModal] = useState(false);
+    const [selectedFlowId, setSelectedFlowId] = useState<string>('');
+    const [approvalMessage, setApprovalMessage] = useState('');
+    const [creatingApproval, setCreatingApproval] = useState(false);
+
+    // フローを取得
+    useEffect(() => {
+        const loadFlows = async () => {
+            try {
+                // Get first workspace
+                const wsRes = await authFetch(`${API_BASE}/workspaces`);
+                if (wsRes.ok) {
+                    const workspaces = await wsRes.json();
+                    if (workspaces.length > 0) {
+                        const flowsRes = await authFetch(`${API_BASE}/approvals/flows?workspace_id=${workspaces[0].id}`);
+                        if (flowsRes.ok) {
+                            const flowsData = await flowsRes.json();
+                            setFlows(flowsData);
+                        }
+                    }
+                }
+            } catch (err) {
+                console.error('フローを取得できませんでした:', err);
+            }
+        };
+        if (user) {
+            loadFlows();
+        }
+    }, [user]);
+
+    // 承認依頼を作成
+    const handleCreateApprovalRequest = async () => {
+        if (!result?.id || !selectedFlowId) return;
+
+        setCreatingApproval(true);
+        try {
+            const res = await authFetch(`${API_BASE}/approvals/requests`, {
+                method: 'POST',
+                body: JSON.stringify({
+                    contract_id: result.id,
+                    flow_id: selectedFlowId,
+                    message: approvalMessage || null
+                })
+            });
+
+            if (res.ok) {
+                alert('承認依頼を作成しました！');
+                setShowApprovalModal(false);
+                navigate('/approvals');
+            } else {
+                const errorData = await res.json();
+                alert(`承認依頼の作成に失敗しました: ${errorData.detail || '不明なエラー'}`);
+            }
+        } catch (err) {
+            console.error('承認依頼の作成に失敗しました。', err);
+            alert('承認依頼の作成に失敗しました。');
+        } finally {
+            setCreatingApproval(false);
+        }
+    };
 
     // ドラッグアンドドロップ
     const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -145,12 +212,18 @@ export function UploadPage() {
                     <div className="success-actions">
                         <button
                             className="btn btn-primary btn-lg"
+                            onClick={() => setShowApprovalModal(true)}
+                        >
+                            承認依頼を作成
+                        </button>
+                        <button
+                            className="btn btn-secondary"
                             onClick={() => navigate(`/contracts/${result.contract_id}`)}
                         >
                             契約詳細を見る
                         </button>
                         <button
-                            className="btn btn-secondary"
+                            className="btn btn-ghost"
                             onClick={() => {
                                 setResult(null);
                                 setFile(null);
@@ -162,6 +235,50 @@ export function UploadPage() {
                         </button>
                     </div>
                 </div>
+
+                {/* 承認依頼作成モーダル */}
+                {showApprovalModal && (
+                    <div className="modal-overlay" onClick={() => setShowApprovalModal(false)}>
+                        <div className="modal-content" onClick={e => e.stopPropagation()}>
+                            <h2>承認依頼を作成</h2>
+                            <div className="form-group">
+                                <label>承認フローを選択</label>
+                                <select
+                                    value={selectedFlowId}
+                                    onChange={e => setSelectedFlowId(e.target.value)}
+                                >
+                                    <option value="">フローを選択してください</option>
+                                    {flows.map(flow => (
+                                        <option key={flow.id} value={flow.id}>
+                                            {flow.name}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div className="form-group">
+                                <label>メッセージ（任意）</label>
+                                <textarea
+                                    value={approvalMessage}
+                                    onChange={e => setApprovalMessage(e.target.value)}
+                                    placeholder="承認依頼に関するメッセージを入力"
+                                    rows={3}
+                                />
+                            </div>
+                            <div className="modal-actions">
+                                <button className="cancel-btn" onClick={() => setShowApprovalModal(false)}>
+                                    キャンセル
+                                </button>
+                                <button
+                                    className="submit-btn"
+                                    onClick={handleCreateApprovalRequest}
+                                    disabled={!selectedFlowId || creatingApproval}
+                                >
+                                    {creatingApproval ? '作成中...' : '承認依頼を作成'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
             </div>
         );
     }

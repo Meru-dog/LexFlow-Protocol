@@ -27,6 +27,7 @@ class Contract(Base):
     __tablename__ = "contracts"
     
     id = Column(String(64), primary_key=True)
+    workspace_id = Column(String(64), ForeignKey("workspaces.id"), nullable=True) # V3: 所属ワークスペース
     title = Column(String(255), nullable=False)
     file_url = Column(Text, nullable=False)
     file_hash = Column(String(66), nullable=True)  # IPFS または ファイルハッシュ
@@ -37,9 +38,12 @@ class Contract(Base):
     status = Column(Enum(ContractStatus), default=ContractStatus.PENDING)
     parsed_data = Column(Text, nullable=True)  # JSON文字列の解析された契約データ
     blockchain_tx_hash = Column(String(66), nullable=True)
+    parties = Column(Text, nullable=True)  # JSON文字列の当事者リスト
+    summary = Column(Text, nullable=True)  # 契約書の要約
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     
+    workspace = relationship("Workspace", back_populates="contracts")
     conditions = relationship("Condition", back_populates="contract", cascade="all, delete-orphan")
     obligations = relationship("Obligation", back_populates="contract", cascade="all, delete-orphan")  # V2: F2用
 
@@ -308,6 +312,7 @@ class Workspace(Base):
     members = relationship("WorkspaceUser", back_populates="workspace", cascade="all, delete-orphan")
     approval_flows = relationship("ApprovalFlow", back_populates="workspace", cascade="all, delete-orphan")
     audit_events = relationship("AuditEvent", back_populates="workspace", cascade="all, delete-orphan")
+    contracts = relationship("Contract", back_populates="workspace") # V3: 契約一覧
 
 # ===== V3: ユーザーモデル =====
 class User(Base):
@@ -321,6 +326,7 @@ class User(Base):
     email = Column(String(255), unique=True, nullable=False, index=True)
     password_hash = Column(String(255), nullable=False)
     display_name = Column(String(255), nullable=True)
+    slack_webhook_url = Column(String(255), nullable=True) # V3: 通知用Webhook
     status = Column(Enum(UserStatus), default=UserStatus.PENDING)
     email_verified_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -518,6 +524,7 @@ class ApprovalRequest(Base):
     # リレーションシップ
     flow = relationship("ApprovalFlow", back_populates="requests")
     tasks = relationship("ApprovalTask", back_populates="request", cascade="all, delete-orphan")
+    contract = relationship("Contract") # 契約書へのショートカット
 
 # ===== V3: 承認タスク =====
 class ApprovalTask(Base):

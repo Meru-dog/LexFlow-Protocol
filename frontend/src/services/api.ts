@@ -38,12 +38,29 @@ export const getFileUrl = (path: string) => {
 
 // API リクエスト
 async function fetchAPI<T>(endpoint: string, options?: RequestInit): Promise<T> {
-    const { headers, ...rest } = options || {};
+    const { headers, body, ...rest } = options || {};
+
+    // トークンを localStorage から取得
+    const token = localStorage.getItem('access_token');
+
+    // 適切なヘッダーを構築
+    const defaultHeaders: Record<string, string> = {};
+
+    // body が FormData でない場合のみ Content-Type を設定
+    if (!(body instanceof FormData)) {
+        defaultHeaders['Content-Type'] = 'application/json';
+    }
+
+    if (token) {
+        defaultHeaders['Authorization'] = `Bearer ${token}`;
+    }
+
     const response = await fetch(`${API_BASE}${endpoint}`, {
         headers: {
-            'Content-Type': 'application/json',
+            ...defaultHeaders,
             ...headers,
         },
+        body,
         ...rest,
     });
 
@@ -95,16 +112,10 @@ export const api = {
         if (lawyerAddress) formData.append('lawyer_address', lawyerAddress);
         if (totalAmount) formData.append('total_amount', totalAmount.toString());
 
-        const response = await fetch(`${API_BASE}/contracts/upload`, {
+        return fetchAPI<any>('/contracts/upload', {
             method: 'POST',
             body: formData,
         });
-
-        if (!response.ok) {
-            throw new Error('Failed to upload contract');
-        }
-
-        return response.json();
     },
 
     // コントラクト取得
@@ -253,16 +264,10 @@ export const api = {
         formData.append('creator_address', creatorAddress);
         if (summary) formData.append('summary', summary);
 
-        const response = await fetch(`${API_BASE}/versions`, {
+        return fetchAPI<any>('/versions', {
             method: 'POST',
             body: formData,
         });
-
-        if (!response.ok) {
-            throw new Error('Failed to create version');
-        }
-
-        return response.json();
     },
 
     // 署名を提出
@@ -305,6 +310,117 @@ export const api = {
     // 比較可能なバージョン一覧を取得
     async getComparableVersions(caseId: string) {
         return fetchAPI(`/redline/versions/${caseId}`);
+    },
+
+    // ===== 監査証跡API =====
+    async getAuditEvents(params?: {
+        workspace_id?: string;
+        contract_id?: string;
+        actor_id?: string;
+        event_type?: string;
+        from_date?: string;
+        to_date?: string;
+        page?: number;
+        page_size?: number;
+    }) {
+        const queryString = params ? '?' + new URLSearchParams(
+            Object.entries(params).reduce((acc, [key, value]) => {
+                if (value !== undefined && value !== null) {
+                    acc[key] = String(value);
+                }
+                return acc;
+            }, {} as Record<string, string>)
+        ).toString() : '';
+        return fetchAPI(`/audit/events${queryString}`);
+    },
+
+    async getAuditEventTypes() {
+        return fetchAPI('/audit/types');
+    },
+
+    async verifyAuditChain(params?: { workspace_id?: string; limit?: number }) {
+        const queryString = params ? '?' + new URLSearchParams(
+            Object.entries(params).reduce((acc, [key, value]) => {
+                if (value !== undefined && value !== null) {
+                    acc[key] = String(value);
+                }
+                return acc;
+            }, {} as Record<string, string>)
+        ).toString() : '';
+        return fetchAPI(`/audit/verify${queryString}`);
+    },
+
+    async exportAuditEvents(format: 'csv' | 'json', params?: {
+        workspace_id?: string;
+        contract_id?: string;
+        actor_id?: string;
+        event_type?: string;
+        from_date?: string;
+        to_date?: string;
+        limit?: number;
+    }) {
+        const allParams = { format, ...params };
+        const queryString = '?' + new URLSearchParams(
+            Object.entries(allParams).reduce((acc, [key, value]) => {
+                if (value !== undefined && value !== null) {
+                    acc[key] = String(value);
+                }
+                return acc;
+            }, {} as Record<string, string>)
+        ).toString();
+
+        const token = localStorage.getItem('access_token');
+        const response = await fetch(`${API_BASE}/audit/export${queryString}`, {
+            headers: {
+                ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+            }
+        });
+
+        if (!response.ok) {
+            throw new Error('監査証跡のエクスポートに失敗しました');
+        }
+        return response.blob();
+    },
+
+    // ===== プロフィールAPI =====
+    async getProfile() {
+        return fetchAPI('/users/me');
+    },
+
+    async updateProfile(data: { display_name?: string; slack_webhook_url?: string }) {
+        return fetchAPI('/users/me', {
+            method: 'PATCH',
+            body: JSON.stringify(data),
+        });
+    },
+
+    async testSlackNotification() {
+        return fetchAPI('/users/me/test-slack', {
+            method: 'POST'
+        });
+    },
+
+    // ===== 通知API =====
+    async getNotifications(params?: {
+        status?: string;
+        channel?: string;
+        limit?: number;
+    }) {
+        const queryString = params ? '?' + new URLSearchParams(
+            Object.entries(params).reduce((acc, [key, value]) => {
+                if (value !== undefined && value !== null) {
+                    acc[key] = String(value);
+                }
+                return acc;
+            }, {} as Record<string, string>)
+        ).toString() : '';
+        return fetchAPI(`/notifications${queryString}`);
+    },
+
+    async resendNotification(notificationId: string) {
+        return fetchAPI(`/notifications/${notificationId}/resend`, {
+            method: 'POST',
+        });
     },
 
     getFileUrl, // ヘルパー関数を追加

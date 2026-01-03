@@ -48,6 +48,23 @@ class Settings(BaseSettings):
     # クロスオリジンリクエストを許可するURL（カンマ区切り）
     CORS_ORIGINS: str = "http://localhost:5173,http://localhost:5174,http://localhost:3000,https://lexflow-frontend.vercel.app"
     
+    # ===== 通知設定 (Notifications) =====
+    # Email通知設定（SMTP）
+    USE_SMTP: bool = False  # SMTP機能を有効化（Trueで実際にメール送信、Falseでログ出力のみ）
+    SMTP_HOST: str = "smtp.gmail.com"  # SMTPサーバーホスト
+    SMTP_PORT: int = 587  # SMTPポート（通常587または465）
+    SMTP_USER: str = ""  # SMTP認証ユーザー名（通常はメールアドレス）
+    SMTP_PASSWORD: str = ""  # SMTP認証パスワード
+    SMTP_FROM_EMAIL: str = "noreply@lexflow.example.com"  # 送信元メールアドレス
+    SMTP_FROM_NAME: str = "LexFlow Protocol"  # 送信元名
+    
+    # Slack通知設定
+    # Webhook URLはユーザー単位でDBに保存するため、ここでは設定不要
+    
+    # ===== フロントエンドURL設定 =====
+    # 通知メール内のリンク生成に使用
+    FRONTEND_URL: str = "http://localhost:5173"  # デプロイ時はVercel URLなどに変更
+    
     # ===== オンチェーン設定 =====
     @property
     def cors_origins_list(self) -> List[str]:

@@ -317,6 +317,9 @@ class ObligationService:
         Returns:
             期限間近の義務リスト
         """
+        from app.services.notification_service import notification_service
+        from app.models.models import User, Contract
+        
         now = datetime.now()
         seven_days_later = now + timedelta(days=7)
         
@@ -332,13 +335,66 @@ class ObligationService:
         )
         due_soon_obligations = result.scalars().all()
         
-        # ステータスを DUE_SOON に更新
+        # ステータスを DUE_SOON に更新し、通知を送信
         for obligation in due_soon_obligations:
             obligation.status = ObligationStatus.DUE_SOON
+            
+            # 通知送信（エラーが発生しても処理は継続）
+            try:
+                # 契約書と責任者を取得
+                result_contract = await db.execute(
+                    select(Contract).where(Contract.id == obligation.contract_id)
+                )
+                contract = result_contract.scalar_one_or_none()
+                
+                if contract and obligation.responsible_party:
+                    # 責任者がUser IDの場合、Emailを送信
+                    result_user = await db.execute(
+                        select(User).where(User.id == obligation.responsible_party)
+                    )
+                    user = result_user.scalar_one_or_none()
+                    
+                    if user and user.email:
+                        from app.core.config import settings
+                        days_until_due = (obligation.due_date - now).days
+                        contract_url = f"{settings.FRONTEND_URL}/contracts/{contract.id}"
+                        
+                        # 通知ペイロード作成
+                        payload = notification_service.create_reminder_payload(
+                            contract_title=contract.title or f"契約ID: {contract.id}",
+                            due_at=obligation.due_date,
+                            days_until_due=days_until_due,
+                            approval_url=contract_url
+                        )
+                        
+                        # Email通知
+                        if user.email:
+                            await notification_service.create_and_send(
+                                db=db,
+                                channel="email",
+                                recipient=user.email,
+                                subject=f"期限リマインド: {obligation.action} ({days_until_due}日後)",
+                                payload=payload
+                            )
+                        
+                        # Slack通知
+                        if user.slack_webhook_url:
+                            await notification_service.create_and_send(
+                                db=db,
+                                channel="slack",
+                                recipient=user.slack_webhook_url,
+                                subject=None,
+                                payload=payload
+                            )
+                        print(f"[REMINDER] 義務期限リマインド送信: {obligation.id} -> {user.email}")
+            except Exception as e:
+                # 通知失敗はログのみ
+                print(f"[NOTIFICATION ERROR] 義務リマインド通知失敗: {str(e)}")
         
         await db.commit()
         
         return due_soon_obligations
+
     
     @staticmethod
     async def check_overdue_obligations(db: AsyncSession) -> List[Obligation]:

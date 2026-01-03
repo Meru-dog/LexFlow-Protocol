@@ -127,9 +127,6 @@ const Home: React.FC = () => {
                             <span className="tech-badge">snarkjs</span>
                             <span className="tech-badge">Poseidon</span>
                         </div>
-                        <Link to="/zk-onboarding" className="zk-button">
-                            使ってみる <ArrowRight size={16} />
-                        </Link>
                     </div>
                 </div>
             </section>

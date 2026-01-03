@@ -42,6 +42,8 @@ class ContractResponse(BaseModel):
     released_amount: float
     status: ContractStatusEnum
     blockchain_tx_hash: Optional[str] = None
+    parties: Optional[str] = None
+    summary: Optional[str] = None
     created_at: datetime
     condition_count: int = 0
     

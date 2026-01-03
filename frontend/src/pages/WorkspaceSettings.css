@@ -26,19 +26,25 @@
 }
 
 .create-workspace-btn {
-    padding: 0.75rem 1.5rem;
-    background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-secondary) 100%);
-    color: white;
+    padding: 1rem 2rem;
+    background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%);
+    color: rgb(0, 0, 0);
     border: none;
-    border-radius: 8px;
-    font-weight: 500;
+    border-radius: 12px;
+    font-weight: 700;
+    font-size: 1rem;
     cursor: pointer;
-    transition: all 0.2s ease;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 4px 15px rgba(99, 102, 241, 0.3);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
 }
 
 .create-workspace-btn:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 4px 15px rgba(99, 102, 241, 0.4);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(99, 102, 241, 0.4);
+    filter: brightness(1.1);
 }
 
 .workspace-error {
@@ -140,19 +146,22 @@
 }
 
 .section-action-btn {
-    padding: 0.5rem 1rem;
-    background: var(--bg-tertiary);
-    color: var(--text-primary);
-    border: 1px solid var(--border-color);
-    border-radius: 6px;
-    font-size: 0.875rem;
+    padding: 0.625rem 1.25rem;
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    color: rgb(0, 0, 0);
+    border: none;
+    border-radius: 10px;
+    font-size: 0.95rem;
+    font-weight: 700;
     cursor: pointer;
     transition: all 0.2s ease;
+    box-shadow: 0 4px 10px rgba(16, 185, 129, 0.2);
 }
 
 .section-action-btn:hover {
-    background: var(--bg-hover);
-    border-color: var(--accent-primary);
+    transform: translateY(-1px);
+    box-shadow: 0 6px 15px rgba(16, 185, 129, 0.3);
+    filter: brightness(1.05);
 }
 
 .members-list {
@@ -236,7 +245,8 @@
 
 .role-name {
     color: var(--text-primary);
-    font-weight: 500;
+    font-weight: 700;
+    font-size: 1.15rem;
 }
 
 .custom-badge {
@@ -248,19 +258,31 @@
     margin-left: auto;
 }
 
-.role-permissions {
+.role-permissions-list {
+    list-style: none;
+    padding: 0;
+    margin: 0.5rem 0 0 0.5rem;
     display: flex;
-    flex-wrap: wrap;
-    gap: 0.375rem;
+    flex-direction: column;
+    gap: 0.5rem;
 }
 
-.permission-tag {
-    background: var(--bg-card);
-    color: var(--text-secondary);
-    padding: 0.25rem 0.5rem;
-    border-radius: 4px;
-    font-size: 0.7rem;
-    font-family: monospace;
+.role-permissions-list li {
+    position: relative;
+    padding-left: 1.5rem;
+    color: var(--text-primary);
+    font-size: 0.95rem;
+    font-weight: 500;
+}
+
+.role-permissions-list li::before {
+    content: "•";
+    position: absolute;
+    left: 0;
+    color: #6366f1;
+    font-weight: bold;
+    font-size: 1.25rem;
+    line-height: 1;
 }
 
 .permission-more {
@@ -288,11 +310,17 @@
 
 .modal-content {
     background: var(--bg-card);
-    border-radius: 16px;
-    padding: 2rem;
+    border-radius: 24px;
+    padding: 2.5rem;
     width: 100%;
-    max-width: 400px;
-    border: 1px solid var(--border-color);
+    max-width: 480px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.4);
+    backdrop-filter: blur(10px);
+}
+
+.modal-content.dark {
+    background: rgba(30, 41, 59, 0.95);
 }
 
 .modal-content h2 {
@@ -345,13 +373,22 @@
 }
 
 .submit-btn {
-    flex: 1;
-    padding: 0.75rem;
-    background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-secondary) 100%);
+    flex: 2;
+    padding: 0.875rem;
+    background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%);
     color: white;
     border: none;
-    border-radius: 8px;
+    border-radius: 12px;
+    font-weight: 700;
+    font-size: 1rem;
     cursor: pointer;
+    transition: all 0.2s ease;
+    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+}
+
+.submit-btn:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 18px rgba(99, 102, 241, 0.4);
 }
 
 .submit-btn:disabled {

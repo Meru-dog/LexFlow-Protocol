@@ -16,13 +16,17 @@ import {
 } from 'lucide-react';
 import { api, getFileUrl } from '../services/api';
 import { useWallet } from '../contexts/WalletContext';
+import { useAuth, authFetch } from '../contexts/AuthContext';
 import type { ContractWithDetails, Condition } from '../types';
 import './ContractDetail.css';
+
+const API_BASE = '/api/v1';
 
 export function ContractDetail() {
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
     const { isConnected, address } = useWallet();
+    const { /* user */ } = useAuth();
 
     const [contract, setContract] = useState<ContractWithDetails | null>(null);
     const [loading, setLoading] = useState(true);
@@ -37,6 +41,13 @@ export function ContractDetail() {
     const [loadingAi, setLoadingAi] = useState(false);
     const [contractText, setContractText] = useState<string>('');
     const [loadingText, setLoadingText] = useState(false);
+
+    // 承認フロー関連
+    const [flows, setFlows] = useState<any[]>([]);
+    const [showApprovalModal, setShowApprovalModal] = useState(false);
+    const [selectedFlowId, setSelectedFlowId] = useState<string>('');
+    const [approvalMessage, setApprovalMessage] = useState('');
+    const [creatingApproval, setCreatingApproval] = useState(false);
 
     // AI理由からJSONを抽出してパースする関数
     const parseAiReason = (reason: string): string => {
@@ -213,6 +224,56 @@ export function ContractDetail() {
         }).format(value);
     };
 
+    // フローを取得
+    useEffect(() => {
+        const loadFlows = async () => {
+            if (!contract?.workspace_id) return;
+            try {
+                const flowsRes = await authFetch(`${API_BASE}/approvals/flows?workspace_id=${contract.workspace_id}`);
+                if (flowsRes.ok) {
+                    const flowsData = await flowsRes.json();
+                    setFlows(flowsData);
+                }
+            } catch (err) {
+                console.error('フローを取得できませんでした。', err);
+            }
+        };
+        if (contract?.workspace_id) {
+            loadFlows();
+        }
+    }, [contract?.workspace_id]);
+
+    // 承認依頼を作成
+    const handleCreateApprovalRequest = async () => {
+        if (!id || !selectedFlowId) return;
+
+        setCreatingApproval(true);
+        try {
+            const res = await authFetch(`${API_BASE}/approvals/requests`, {
+                method: 'POST',
+                body: JSON.stringify({
+                    contract_id: id,
+                    flow_id: selectedFlowId,
+                    message: approvalMessage || null
+                })
+            });
+
+            if (res.ok) {
+                alert('承認依頼を作成しました！');
+                setShowApprovalModal(false);
+                navigate('/approvals');
+            } else {
+                const errorData = await res.json();
+                alert(`承認依頼の作成に失敗しました: ${errorData.detail || '不明なエラー'}`);
+            }
+        } catch (err) {
+            console.error('承認依頼の作成に失敗しました。', err);
+            alert('承認依頼の作成に失敗しました。');
+        } finally {
+            setCreatingApproval(false);
+        }
+    };
+
     if (loading) {
         return (
             <div className="contract-detail">
@@ -267,6 +328,12 @@ export function ContractDetail() {
                     >
                         <HistoryIcon size={16} className="mr-2" />
                         署名・版管理
+                    </button>
+                    <button
+                        className="btn btn-primary mr-2"
+                        onClick={() => setShowApprovalModal(true)}
+                    >
+                        承認依頼を作成
                     </button>
                     {contract.status === 'pending' && (
                         <button
@@ -769,6 +836,72 @@ export function ContractDetail() {
                     <p className="text-secondary p-4">テキストを読み込めませんでした。</p>
                 )}
             </div>
+
+            {/* 承認依頼作成モーダル */}
+            {showApprovalModal && (
+                <div className="modal-overlay" onClick={() => setShowApprovalModal(false)}>
+                    <div className="modal-content card" onClick={e => e.stopPropagation()}>
+                        <h2><Plus size={24} /> 承認依頼を作成</h2>
+                        <p className="text-secondary mb-6">契約の承認プロセスを開始するためのワークフローを選択してください。</p>
+
+                        <div className="form-group">
+                            <label className="form-label">承認フロー（テンプレート）</label>
+                            {flows.length === 0 ? (
+                                <div className="p-4 bg-neutral rounded border border-dashed border-neutral-focus text-center">
+                                    <p className="text-sm opacity-70">利用可能なフローがありません。</p>
+                                    <button
+                                        className="btn btn-ghost btn-xs mt-2"
+                                        onClick={() => navigate('/approvals')}
+                                    >
+                                        管理画面で作成する
+                                    </button>
+                                </div>
+                            ) : (
+                                <select
+                                    className="input"
+                                    value={selectedFlowId}
+                                    onChange={e => setSelectedFlowId(e.target.value)}
+                                >
+                                    <option value="">フローを選択してください...</option>
+                                    {flows.map(flow => (
+                                        <option key={flow.id} value={flow.id}>
+                                            {flow.name}
+                                        </option>
+                                    ))}
+                                </select>
+                            )}
+                        </div>
+
+                        <div className="form-group">
+                            <label className="form-label">メッセージ（任意）</label>
+                            <textarea
+                                className="input"
+                                value={approvalMessage}
+                                onChange={e => setApprovalMessage(e.target.value)}
+                                placeholder="承認者への指示や参考情報を入力してください"
+                                rows={3}
+                            />
+                        </div>
+
+                        <div className="modal-actions mt-8">
+                            <button
+                                className="btn btn-primary"
+                                onClick={handleCreateApprovalRequest}
+                                disabled={!selectedFlowId || creatingApproval}
+                            >
+                                {creatingApproval ? '作成中...' : '承認依頼を確定'}
+                            </button>
+                            <button
+                                className="btn btn-ghost"
+                                onClick={() => setShowApprovalModal(false)}
+                                disabled={creatingApproval}
+                            >
+                                キャンセル
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

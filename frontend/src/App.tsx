@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { WalletProvider } from './contexts/WalletContext';
 import { AuthProvider } from './contexts/AuthContext';  // V3: 認証コンテキスト
@@ -20,6 +20,8 @@ import SignupPage from './pages/Signup';
 import ProfilePage from './pages/Profile';
 import WorkspaceSettings from './pages/WorkspaceSettings';
 import ApprovalFlowsPage from './pages/ApprovalFlows';
+import AuditLog from './pages/AuditLog';              // New: 監査証跡ページ
+import Notifications from './pages/Notifications';    // New: 通知履歴ページ
 import './index.css';
 
 // React Query クライアント
@@ -47,12 +49,10 @@ function App() {
                   <Route path="/login" element={<LoginPage />} />
                   <Route path="/signup" element={<SignupPage />} />
 
-                  {/* Redirect root to login */}
-                  <Route path="/" element={<Navigate to="/login" replace />} />
-
-                  {/* Protected routes */}
-                  <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+                  {/* Protected routes - Home is at root */}
+                  <Route path="/" element={<ProtectedRoute><Home /></ProtectedRoute>} />
                   <Route path="/home" element={<ProtectedRoute><Home /></ProtectedRoute>} />
+                  <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
                   <Route path="/contracts" element={<ProtectedRoute><ContractsPage /></ProtectedRoute>} />
                   <Route path="/contracts/:id" element={<ProtectedRoute><ContractDetail /></ProtectedRoute>} />
                   <Route path="/contracts/:contractId/obligations" element={<ProtectedRoute><ObligationTimeline /></ProtectedRoute>} />
@@ -64,6 +64,8 @@ function App() {
                   <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
                   <Route path="/workspaces" element={<ProtectedRoute><WorkspaceSettings /></ProtectedRoute>} />
                   <Route path="/approvals" element={<ProtectedRoute><ApprovalFlowsPage /></ProtectedRoute>} />
+                  <Route path="/audit" element={<ProtectedRoute><AuditLog /></ProtectedRoute>} />
+                  <Route path="/notifications" element={<ProtectedRoute><Notifications /></ProtectedRoute>} />
                 </Routes>
               </main>
             </div>
@@ -75,5 +77,3 @@ function App() {
 }
 
 export default App;
-
-

@@ -141,6 +141,10 @@
     max-width: 600px;
     max-height: 90vh;
     overflow-y: auto;
+    background: #ffffff;
+    color: #1e293b;
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-xl);
 }
 
 .form-group {

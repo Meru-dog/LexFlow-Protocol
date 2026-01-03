@@ -22,6 +22,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 // ===== APIベースURL =====
 const API_BASE = '/api/v1';
+const SESSION_DURATION = 60 * 60 * 1000; // 1時間（ミリ秒）
 
 // ===== トークン管理 =====
 const getAccessToken = () => localStorage.getItem('access_token');
@@ -40,26 +41,48 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const [user, setUser] = useState<User | null>(null);
     const [isLoading, setIsLoading] = useState(true);
 
-    // 初期化時にトークンをチェック
+    // 初期化時にトークンとセッション有効期限をチェック
     useEffect(() => {
         const initAuth = async () => {
             const token = getAccessToken();
-            if (token) {
-                try {
-                    // JWTをデコードしてユーザー情報を取得（簡易版）
-                    const payload = JSON.parse(atob(token.split('.')[1]));
-                    setUser({
-                        id: payload.sub,
-                        email: payload.email,
-                        wallets: []
-                    });
-                } catch {
-                    clearTokens();
+            const loginTimestamp = localStorage.getItem('login_timestamp');
+
+            if (token && loginTimestamp) {
+                const now = Date.now();
+                const elapsed = now - parseInt(loginTimestamp, 10);
+
+                if (elapsed > SESSION_DURATION) {
+                    logout(); // 期限切れ
+                } else {
+                    try {
+                        // JWTをデコードしてユーザー情報を取得（簡易版）
+                        const payload = JSON.parse(atob(token.split('.')[1]));
+                        setUser({
+                            id: payload.sub,
+                            email: payload.email,
+                            wallets: []
+                        });
+                    } catch {
+                        logout();
+                    }
                 }
             }
             setIsLoading(false);
         };
         initAuth();
+
+        // 定期的にセッション期限をチェック（例: 1分ごと）
+        const interval = setInterval(() => {
+            const loginTimestamp = localStorage.getItem('login_timestamp');
+            if (loginTimestamp) {
+                const now = Date.now();
+                if (now - parseInt(loginTimestamp, 10) > SESSION_DURATION) {
+                    logout();
+                }
+            }
+        }, 60000);
+
+        return () => clearInterval(interval);
     }, []);
 
     const login = async (email: string, password: string) => {
@@ -76,6 +99,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
         const data = await response.json();
         setTokens(data.access_token, data.refresh_token);
+        localStorage.setItem('login_timestamp', Date.now().toString());
         setUser({
             id: data.user_id,
             email: data.email,
@@ -101,6 +125,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     const logout = () => {
         clearTokens();
+        localStorage.removeItem('login_timestamp');
         setUser(null);
     };
 

@@ -21,10 +21,10 @@
   --color-error: #ef4444;
   --color-info: #3b82f6;
 
-  /* Text Colors */
-  --color-text-primary: #000000;
-  --color-text-secondary: #000000;
-  --color-text-muted: #000000;
+  /* Text Colors - Optimized for visibility */
+  --color-text-primary: #1e293b;
+  --color-text-secondary: #475569;
+  --color-text-muted: #94a3b8;
 
   /* Borders */
   --color-border: #e2e8f0;
@@ -636,15 +636,23 @@ a:hover {
 }
 
 .modal {
-  background: var(--color-bg-secondary);
+  background: #ffffff;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-2xl);
   padding: var(--space-8);
-  max-width: 500px;
+  max-width: 600px;
   width: 90%;
   max-height: 90vh;
   overflow-y: auto;
   animation: fadeIn 0.3s ease;
+  box-shadow: var(--shadow-xl);
+  color: var(--color-text-primary);
+}
+
+.modal-content.card {
+  background: #ffffff !important;
+  backdrop-filter: none !important;
+  color: var(--color-text-primary) !important;
 }
 
 /* Wallet Button */

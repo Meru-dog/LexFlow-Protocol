@@ -8,12 +8,16 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, delete, func, or_
+from sqlalchemy.orm import selectinload
 import json
+import re
 
 from app.core.database import get_db
+from app.api.auth import get_current_user_id
 from app.models.models import (
-    Workspace, User, Role, Permission, RolePermission,
+    Workspace, User, UserStatus, Role, Permission, RolePermission,
     WorkspaceUser, WorkspaceUserStatus, ContractACL, ACLSubjectType, Contract
 )
 
@@ -26,6 +30,8 @@ router = APIRouter(tags=["権限管理 (RBAC & ACL)"])
 class WorkspaceCreate(BaseModel):
     """ワークスペース作成リクエスト"""
     name: str = Field(..., min_length=1, max_length=255)
+    user_id: Optional[str] = None
+    role_name: Optional[str] = "Owner"
 
 
 class WorkspaceResponse(BaseModel):
@@ -67,7 +73,8 @@ class PermissionResponse(BaseModel):
 class WorkspaceUserInvite(BaseModel):
     """ワークスペースユーザー招待リクエスト"""
     user_id: str
-    role_id: str
+    role_id: Optional[str] = None
+    role_name: Optional[str] = None
 
 
 class WorkspaceUserResponse(BaseModel):
@@ -79,6 +86,8 @@ class WorkspaceUserResponse(BaseModel):
     role_name: str
     status: str
     joined_at: Optional[datetime]
+    email: Optional[str] = None
+    display_name: Optional[str] = None
 
 
 class WorkspaceUserRoleUpdate(BaseModel):
@@ -153,7 +162,11 @@ STANDARD_ROLES = {
 # ===== ワークスペースエンドポイント =====
 
 @router.post("/workspaces", response_model=WorkspaceResponse, status_code=status.HTTP_201_CREATED)
-async def create_workspace(request: WorkspaceCreate, db: Session = Depends(get_db)):
+async def create_workspace(
+    request: WorkspaceCreate,
+    current_user_id: str = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db)
+):
     """
     ワークスペースを作成
     
@@ -167,7 +180,8 @@ async def create_workspace(request: WorkspaceCreate, db: Session = Depends(get_d
     
     # 標準権限を初期化（まだ存在しない場合）
     for perm_def in STANDARD_PERMISSIONS:
-        existing = db.query(Permission).filter(Permission.key == perm_def["key"]).first()
+        result = await db.execute(select(Permission).where(Permission.key == perm_def["key"]))
+        existing = result.scalar_one_or_none()
         if not existing:
             perm = Permission(
                 id=str(uuid.uuid4()),
@@ -176,9 +190,10 @@ async def create_workspace(request: WorkspaceCreate, db: Session = Depends(get_d
                 category=perm_def["category"]
             )
             db.add(perm)
-    db.flush()  # 権限をコミットしてIDを確定
+    await db.flush()  # 権限をコミットしてIDを確定
     
     # 標準ロールを作成
+    target_role_id = None
     for role_name, permission_keys in STANDARD_ROLES.items():
         role_id = str(uuid.uuid4())
         role = Role(
@@ -188,11 +203,15 @@ async def create_workspace(request: WorkspaceCreate, db: Session = Depends(get_d
             is_custom=False
         )
         db.add(role)
-        db.flush()
         
+        # ターゲットとなるロールを特定
+        if role_name == request.role_name:
+            target_role_id = role_id
+            
         # ロールに権限を紐付け
         for perm_key in permission_keys:
-            perm = db.query(Permission).filter(Permission.key == perm_key).first()
+            result = await db.execute(select(Permission).where(Permission.key == perm_key))
+            perm = result.scalar_one_or_none()
             if perm:
                 role_perm = RolePermission(
                     id=str(uuid.uuid4()),
@@ -201,8 +220,23 @@ async def create_workspace(request: WorkspaceCreate, db: Session = Depends(get_d
                 )
                 db.add(role_perm)
     
-    db.commit()
-    db.refresh(workspace)
+    await db.flush()
+    
+    # 指定されたユーザー（デフォルトは作成者）をワークスペースに追加
+    target_user_id = request.user_id or current_user_id
+    if target_role_id:
+        workspace_user = WorkspaceUser(
+            id=str(uuid.uuid4()),
+            workspace_id=workspace_id,
+            user_id=target_user_id,
+            role_id=target_role_id,
+            status=WorkspaceUserStatus.ACTIVE,
+            joined_at=datetime.utcnow()
+        )
+        db.add(workspace_user)
+    
+    await db.commit()
+    await db.refresh(workspace)
     
     return WorkspaceResponse(
         id=workspace.id,
@@ -211,18 +245,45 @@ async def create_workspace(request: WorkspaceCreate, db: Session = Depends(get_d
     )
 
 
+@router.get("/workspaces", response_model=List[WorkspaceResponse])
+async def list_workspaces(
+    user_id: str = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db)
+):
+    """ユーザーが所属するワークスペース一覧を取得"""
+    result = await db.execute(
+        select(Workspace)
+        .join(WorkspaceUser)
+        .where(WorkspaceUser.user_id == user_id)
+    )
+    workspaces = result.scalars().all()
+    
+    return [
+        WorkspaceResponse(
+            id=w.id,
+            name=w.name,
+            created_at=w.created_at
+        )
+        for w in workspaces
+    ]
+
+
 @router.get("/workspaces/{workspace_id}/roles", response_model=List[RoleResponse])
-async def list_roles(workspace_id: str, db: Session = Depends(get_db)):
+async def list_roles(workspace_id: str, db: AsyncSession = Depends(get_db)):
     """ワークスペース内のロール一覧を取得"""
-    roles = db.query(Role).filter(Role.workspace_id == workspace_id).all()
+    result_roles = await db.execute(
+        select(Role)
+        .where(Role.workspace_id == workspace_id)
+        .options(selectinload(Role.permissions).selectinload(RolePermission.permission))
+    )
+    roles = result_roles.scalars().all()
     
     result = []
     for role in roles:
         permission_keys = []
         for rp in role.permissions:
-            perm = db.query(Permission).filter(Permission.id == rp.permission_id).first()
-            if perm:
-                permission_keys.append(perm.key)
+            if rp.permission:
+                permission_keys.append(rp.permission.key)
         
         result.append(RoleResponse(
             id=role.id,
@@ -236,10 +297,11 @@ async def list_roles(workspace_id: str, db: Session = Depends(get_db)):
 
 
 @router.post("/workspaces/{workspace_id}/roles", response_model=RoleResponse, status_code=status.HTTP_201_CREATED)
-async def create_role(workspace_id: str, request: RoleCreate, db: Session = Depends(get_db)):
+async def create_role(workspace_id: str, request: RoleCreate, db: AsyncSession = Depends(get_db)):
     """カスタムロールを作成"""
     # ワークスペース存在確認
-    workspace = db.query(Workspace).filter(Workspace.id == workspace_id).first()
+    result_ws = await db.execute(select(Workspace).where(Workspace.id == workspace_id))
+    workspace = result_ws.scalar_one_or_none()
     if not workspace:
         raise HTTPException(status_code=404, detail="ワークスペースが見つかりません")
     
@@ -255,7 +317,8 @@ async def create_role(workspace_id: str, request: RoleCreate, db: Session = Depe
     
     # 権限を紐付け
     for perm_id in request.permission_ids:
-        perm = db.query(Permission).filter(Permission.id == perm_id).first()
+        result_perm = await db.execute(select(Permission).where(Permission.id == perm_id))
+        perm = result_perm.scalar_one_or_none()
         if perm:
             role_perm = RolePermission(
                 id=str(uuid.uuid4()),
@@ -264,7 +327,7 @@ async def create_role(workspace_id: str, request: RoleCreate, db: Session = Depe
             )
             db.add(role_perm)
     
-    db.commit()
+    await db.commit()
     
     return RoleResponse(
         id=role_id,
@@ -276,9 +339,10 @@ async def create_role(workspace_id: str, request: RoleCreate, db: Session = Depe
 
 
 @router.put("/roles/{role_id}", response_model=RoleResponse)
-async def update_role(role_id: str, request: RoleUpdate, db: Session = Depends(get_db)):
+async def update_role(role_id: str, request: RoleUpdate, db: AsyncSession = Depends(get_db)):
     """ロールを更新（カスタムロールのみ）"""
-    role = db.query(Role).filter(Role.id == role_id).first()
+    result_role = await db.execute(select(Role).where(Role.id == role_id))
+    role = result_role.scalar_one_or_none()
     if not role:
         raise HTTPException(status_code=404, detail="ロールが見つかりません")
     
@@ -290,7 +354,7 @@ async def update_role(role_id: str, request: RoleUpdate, db: Session = Depends(g
     
     if request.permission_ids is not None:
         # 既存の権限を削除
-        db.query(RolePermission).filter(RolePermission.role_id == role_id).delete()
+        await db.execute(delete(RolePermission).where(RolePermission.role_id == role_id))
         
         # 新しい権限を追加
         for perm_id in request.permission_ids:
@@ -301,8 +365,8 @@ async def update_role(role_id: str, request: RoleUpdate, db: Session = Depends(g
             )
             db.add(role_perm)
     
-    db.commit()
-    db.refresh(role)
+    await db.commit()
+    await db.refresh(role)
     
     return RoleResponse(
         id=role.id,
@@ -314,9 +378,10 @@ async def update_role(role_id: str, request: RoleUpdate, db: Session = Depends(g
 
 
 @router.get("/permissions", response_model=List[PermissionResponse])
-async def list_permissions(db: Session = Depends(get_db)):
+async def list_permissions(db: AsyncSession = Depends(get_db)):
     """利用可能な権限一覧を取得"""
-    permissions = db.query(Permission).all()
+    result = await db.execute(select(Permission))
+    permissions = result.scalars().all()
     return [
         PermissionResponse(
             id=p.id,
@@ -331,39 +396,108 @@ async def list_permissions(db: Session = Depends(get_db)):
 # ===== ワークスペースユーザーエンドポイント =====
 
 @router.post("/workspaces/{workspace_id}/users", response_model=WorkspaceUserResponse, status_code=status.HTTP_201_CREATED)
-async def invite_user(workspace_id: str, request: WorkspaceUserInvite, db: Session = Depends(get_db)):
+async def invite_user(workspace_id: str, request: WorkspaceUserInvite, db: AsyncSession = Depends(get_db)):
     """ワークスペースにユーザーを招待"""
     # 存在確認
-    workspace = db.query(Workspace).filter(Workspace.id == workspace_id).first()
+    result_ws = await db.execute(select(Workspace).where(Workspace.id == workspace_id))
+    workspace = result_ws.scalar_one_or_none()
     if not workspace:
         raise HTTPException(status_code=404, detail="ワークスペースが見つかりません")
     
-    user = db.query(User).filter(User.id == request.user_id).first()
+    # ユーザー特定 (ID, メール, または表示名で検索)
+    result_user = await db.execute(
+        select(User).where(
+            or_(
+                User.id == request.user_id,
+                User.email == request.user_id,
+                User.display_name == request.user_id
+            )
+     
+        )
+    )
+    user = result_user.scalar_one_or_none()
+    
     if not user:
-        raise HTTPException(status_code=404, detail="ユーザーが見つかりません")
+        # 新しいユーザーを自動作成 (Quick Create)
+        user_id = str(uuid.uuid4())
+        # メールアドレス形式かチェック
+        is_email = re.match(r"[^@]+@[^@]+\.[^@]+", request.user_id)
+        email = request.user_id if is_email else f"{request.user_id}@pending.local"
+        display_name = request.user_id
+        
+        user = User(
+            id=user_id,
+            email=email,
+            display_name=display_name,
+            password_hash="pending_invite", # プレースホルダー
+            status=UserStatus.PENDING
+        )
+        db.add(user)
+        # Flush to get user.id available for WorkspaceUser
+        await db.flush()
     
-    role = db.query(Role).filter(Role.id == request.role_id, Role.workspace_id == workspace_id).first()
+    role = None
+    if request.role_id:
+        result_role = await db.execute(select(Role).where(Role.id == request.role_id, Role.workspace_id == workspace_id))
+        role = result_role.scalar_one_or_none()
+    elif request.role_name:
+        # ロール名による検索 (大文字小文字を区別しない)
+        result_role = await db.execute(
+            select(Role).where(
+                func.lower(Role.name) == func.lower(request.role_name),
+                Role.workspace_id == workspace_id
+            )
+        )
+        role = result_role.scalar_one_or_none()
+        
     if not role:
-        raise HTTPException(status_code=404, detail="ロールが見つかりません")
+        if request.role_name:
+            # 新しいロールを自動作成 (Auto-Role Creation)
+            role_id = str(uuid.uuid4())
+            role = Role(
+                id=role_id,
+                workspace_id=workspace_id,
+                name=request.role_name,
+                is_custom=True
+            )
+            db.add(role)
+            
+            # 標準的な権限を付与 (Memberレベル)
+            member_perms = ["contract:view", "approval:view", "workspace:view"]
+            for perm_key in member_perms:
+                res_perm = await db.execute(select(Permission).where(Permission.key == perm_key))
+                perm = res_perm.scalar_one_or_none()
+                if perm:
+                    rp = RolePermission(
+                        id=str(uuid.uuid4()),
+                        role_id=role_id,
+                        permission_id=perm.id
+                    )
+                    db.add(rp)
+            
+            await db.flush()
+        else:
+            raise HTTPException(status_code=404, detail=f"ロール '{request.role_id}' が見つかりません")
     
-    # 重複チェック
-    existing = db.query(WorkspaceUser).filter(
+    # 重複チェック (user.id を使用)
+    result_existing = await db.execute(select(WorkspaceUser).where(
         WorkspaceUser.workspace_id == workspace_id,
-        WorkspaceUser.user_id == request.user_id
-    ).first()
+        WorkspaceUser.user_id == user.id
+    ))
+    existing = result_existing.scalar_one_or_none()
     if existing:
         raise HTTPException(status_code=400, detail="このユーザーは既にワークスペースに所属しています")
     
     ws_user = WorkspaceUser(
         id=str(uuid.uuid4()),
         workspace_id=workspace_id,
-        user_id=request.user_id,
-        role_id=request.role_id,
+        user_id=user.id, # Use found user.id instead of request.user_id (which could be email)
+        role_id=role.id,
         status=WorkspaceUserStatus.INVITED
     )
     db.add(ws_user)
-    db.commit()
-    db.refresh(ws_user)
+    await db.commit()
+    await db.refresh(ws_user)
     
     return WorkspaceUserResponse(
         id=ws_user.id,
@@ -377,9 +511,14 @@ async def invite_user(workspace_id: str, request: WorkspaceUserInvite, db: Sessi
 
 
 @router.get("/workspaces/{workspace_id}/users", response_model=List[WorkspaceUserResponse])
-async def list_workspace_users(workspace_id: str, db: Session = Depends(get_db)):
+async def list_workspace_users(workspace_id: str, db: AsyncSession = Depends(get_db)):
     """ワークスペースのユーザー一覧を取得"""
-    ws_users = db.query(WorkspaceUser).filter(WorkspaceUser.workspace_id == workspace_id).all()
+    result = await db.execute(
+        select(WorkspaceUser)
+        .where(WorkspaceUser.workspace_id == workspace_id)
+        .options(selectinload(WorkspaceUser.role), selectinload(WorkspaceUser.user))
+    )
+    ws_users = result.scalars().all()
     
     return [
         WorkspaceUserResponse(
@@ -389,29 +528,33 @@ async def list_workspace_users(workspace_id: str, db: Session = Depends(get_db))
             role_id=wu.role_id,
             role_name=wu.role.name if wu.role else "",
             status=wu.status.value,
-            joined_at=wu.joined_at
+            joined_at=wu.joined_at,
+            email=wu.user.email if wu.user else None,
+            display_name=wu.user.display_name if wu.user else None
         )
         for wu in ws_users
     ]
 
 
 @router.put("/workspace-users/{ws_user_id}/role", response_model=WorkspaceUserResponse)
-async def update_user_role(ws_user_id: str, request: WorkspaceUserRoleUpdate, db: Session = Depends(get_db)):
+async def update_user_role(ws_user_id: str, request: WorkspaceUserRoleUpdate, db: AsyncSession = Depends(get_db)):
     """ワークスペースユーザーのロールを変更"""
-    ws_user = db.query(WorkspaceUser).filter(WorkspaceUser.id == ws_user_id).first()
+    result_wu = await db.execute(select(WorkspaceUser).where(WorkspaceUser.id == ws_user_id))
+    ws_user = result_wu.scalar_one_or_none()
     if not ws_user:
         raise HTTPException(status_code=404, detail="ワークスペースユーザーが見つかりません")
     
-    role = db.query(Role).filter(
+    result_role = await db.execute(select(Role).where(
         Role.id == request.role_id,
         Role.workspace_id == ws_user.workspace_id
-    ).first()
+    ))
+    role = result_role.scalar_one_or_none()
     if not role:
         raise HTTPException(status_code=404, detail="ロールが見つかりません")
     
     ws_user.role_id = request.role_id
-    db.commit()
-    db.refresh(ws_user)
+    await db.commit()
+    await db.refresh(ws_user)
     
     return WorkspaceUserResponse(
         id=ws_user.id,
@@ -427,9 +570,10 @@ async def update_user_role(ws_user_id: str, request: WorkspaceUserRoleUpdate, db
 # ===== 契約書ACLエンドポイント =====
 
 @router.get("/contracts/{contract_id}/acl", response_model=List[ContractACLResponse])
-async def list_contract_acl(contract_id: str, db: Session = Depends(get_db)):
+async def list_contract_acl(contract_id: str, db: AsyncSession = Depends(get_db)):
     """契約書のACL一覧を取得"""
-    acls = db.query(ContractACL).filter(ContractACL.contract_id == contract_id).all()
+    result = await db.execute(select(ContractACL).where(ContractACL.contract_id == contract_id))
+    acls = result.scalars().all()
     
     return [
         ContractACLResponse(
@@ -445,10 +589,11 @@ async def list_contract_acl(contract_id: str, db: Session = Depends(get_db)):
 
 
 @router.post("/contracts/{contract_id}/acl", response_model=ContractACLResponse, status_code=status.HTTP_201_CREATED)
-async def create_contract_acl(contract_id: str, request: ContractACLCreate, db: Session = Depends(get_db)):
+async def create_contract_acl(contract_id: str, request: ContractACLCreate, db: AsyncSession = Depends(get_db)):
     """契約書にACLエントリを追加"""
     # 契約書存在確認
-    contract = db.query(Contract).filter(Contract.id == contract_id).first()
+    result_contract = await db.execute(select(Contract).where(Contract.id == contract_id))
+    contract = result_contract.scalar_one_or_none()
     if not contract:
         raise HTTPException(status_code=404, detail="契約書が見つかりません")
     
@@ -456,11 +601,12 @@ async def create_contract_acl(contract_id: str, request: ContractACLCreate, db: 
     subject_type = ACLSubjectType(request.subject_type)
     
     # 重複チェック
-    existing = db.query(ContractACL).filter(
+    result_existing = await db.execute(select(ContractACL).where(
         ContractACL.contract_id == contract_id,
         ContractACL.subject_type == subject_type,
         ContractACL.subject_id == request.subject_id
-    ).first()
+    ))
+    existing = result_existing.scalar_one_or_none()
     if existing:
         raise HTTPException(status_code=400, detail="このACLエントリは既に存在します")
     
@@ -472,8 +618,8 @@ async def create_contract_acl(contract_id: str, request: ContractACLCreate, db: 
         permissions=json.dumps(request.permissions)
     )
     db.add(acl)
-    db.commit()
-    db.refresh(acl)
+    await db.commit()
+    await db.refresh(acl)
     
     return ContractACLResponse(
         id=acl.id,
@@ -486,16 +632,17 @@ async def create_contract_acl(contract_id: str, request: ContractACLCreate, db: 
 
 
 @router.delete("/contracts/{contract_id}/acl/{acl_id}")
-async def delete_contract_acl(contract_id: str, acl_id: str, db: Session = Depends(get_db)):
+async def delete_contract_acl(contract_id: str, acl_id: str, db: AsyncSession = Depends(get_db)):
     """契約書のACLエントリを削除"""
-    acl = db.query(ContractACL).filter(
+    result_acl = await db.execute(select(ContractACL).where(
         ContractACL.id == acl_id,
         ContractACL.contract_id == contract_id
-    ).first()
+    ))
+    acl = result_acl.scalar_one_or_none()
     if not acl:
         raise HTTPException(status_code=404, detail="ACLエントリが見つかりません")
     
-    db.delete(acl)
-    db.commit()
+    await db.delete(acl)
+    await db.commit()
     
     return {"message": "ACLエントリを削除しました"}
