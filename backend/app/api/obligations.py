@@ -8,8 +8,10 @@ from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel, Field
 from datetime import datetime
+import logging
 
 from app.core.database import get_db
+from app.core.logging_config import get_logger
 from app.services.obligation_service import obligation_service
 from app.models.models import Obligation, ObligationType, PartyType, RiskLevel, ObligationStatus, Contract
 from sqlalchemy import select
@@ -18,6 +20,7 @@ import os
 
 # ルーター初期化
 router = APIRouter(prefix="/obligations", tags=["obligations"])
+logger = get_logger(__name__)
 
 
 # ===== Pydanticスキーマ定義 =====
@@ -89,7 +92,8 @@ class ObligationResponse(BaseModel):
             try:
                 import json
                 return json.loads(value)
-            except:
+            except Exception as e:
+                logger.warning(f"evidence_required の解析に失敗しました: {str(e)}")
                 return []
         elif isinstance(value, list):
             return value
@@ -159,19 +163,19 @@ async def extract_obligations(
                 raise HTTPException(status_code=500, detail=f"ファイル読み込みエラー: {str(e)}")
 
         # AIで義務を抽出
-        print(f"🤖 Starting AI extraction for contract {request.contract_id}...")
+        logger.info(f"🤖 契約書から義務を抽出: {request.contract_id}")
         extracted_obligations = await obligation_service.extract_obligations_from_contract(
             contract_text=text_to_analyze,
             contract_id=request.contract_id
         )
-        print(f"✅ AI analysis complete. Found {len(extracted_obligations)} candidates.")
+        logger.info(f"✅ AI分析完了。抽出候補数: {len(extracted_obligations)}")
         
         # 抽出された義務をデータベースに保存
         created_obligations = []
         import json
         for i, ob_data in enumerate(extracted_obligations):
             try:
-                print(f"💾 Saving obligation {i+1}/{len(extracted_obligations)}: {ob_data.get('title')}")
+                logger.debug(f"💾 義務を保存: {i+1}/{len(extracted_obligations)}: {ob_data.get('title')}")
                 obligation = await obligation_service.create_obligation(
                     db=db,
                     contract_id=request.contract_id,
@@ -188,18 +192,19 @@ async def extract_obligations(
                 )
                 created_obligations.append(obligation)
             except Exception as e:
-                print(f"❌ Error saving obligation {i+1}: {str(e)}")
+                logger.error(f"❌ 義務保存失敗: {i+1}: {str(e)}", exc_info=True)
                 # 個別保存のエラーは続行する
                 continue
                 
             created_obligations.append(obligation)
 
-        print(f"✅ Successfully created {len(created_obligations)} obligations in DB")
+        logger.info(f"✅ {len(created_obligations)} 義務をDBに保存しました")
         return created_obligations
         
+    except HTTPException:
+        raise
     except Exception as e:
-        import traceback
-        traceback.print_exc()
+        logger.error(f"義務抽出エラー: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"義務抽出エラー: {str(e)}"
@@ -234,6 +239,7 @@ async def create_obligation(
         )
         return obligation
     except Exception as e:
+        logger.error(f"義務作成エラー: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"義務作成エラー: {str(e)}"
@@ -262,13 +268,15 @@ async def get_obligations_by_contract(
             if ob.evidence_required:
                 try:
                     ob.evidence_required = json.loads(ob.evidence_required)
-                except:
+                except Exception as e:
+                    logger.warning(f"证据を解析できません: {str(e)}")
                     ob.evidence_required = []
             else:
                 ob.evidence_required = []
         
         return obligations
     except Exception as e:
+        logger.error(f"義務取得エラー: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"義務取得エラー: {str(e)}"
@@ -316,7 +324,8 @@ async def update_obligation(
         if obligation.evidence_required:
             try:
                 obligation.evidence_required = json.loads(obligation.evidence_required)
-            except:
+            except Exception as e:
+                logger.warning(f"证据を解析できません: {str(e)}")
                 obligation.evidence_required = []
         else:
             obligation.evidence_required = []
@@ -326,6 +335,7 @@ async def update_obligation(
     except HTTPException:
         raise
     except Exception as e:
+        logger.error(f"義務更新エラー: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"義務更新エラー: {str(e)}"
@@ -368,7 +378,8 @@ async def complete_obligation(
         if obligation.evidence_required:
             try:
                 obligation.evidence_required = json.loads(obligation.evidence_required)
-            except:
+            except Exception as e:
+                logger.warning(f"证据を解析できません: {str(e)}")
                 obligation.evidence_required = []
         else:
             obligation.evidence_required = []
@@ -378,6 +389,7 @@ async def complete_obligation(
     except HTTPException:
         raise
     except Exception as e:
+        logger.error(f"義務完了エラー: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"義務完了エラー: {str(e)}"
@@ -402,13 +414,15 @@ async def get_due_soon_obligations(
             if ob.evidence_required:
                 try:
                     ob.evidence_required = json.loads(ob.evidence_required)
-                except:
+                except Exception as e:
+                    logger.warning(f"证据を解析できません: {str(e)}")
                     ob.evidence_required = []
             else:
                 ob.evidence_required = []
         
         return obligations
     except Exception as e:
+        logger.error(f"期限間近義務取得エラー: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"期限間近義務取得エラー: {str(e)}"
@@ -431,13 +445,15 @@ async def get_overdue_obligations(
             if ob.evidence_required:
                 try:
                     ob.evidence_required = json.loads(ob.evidence_required)
-                except:
+                except Exception as e:
+                    logger.warning(f"证据を解析できません: {str(e)}")
                     ob.evidence_required = []
             else:
                 ob.evidence_required = []
         
         return obligations
     except Exception as e:
+        logger.error(f"期限超過義務取得エラー: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"期限超過義務取得エラー: {str(e)}"

@@ -10,8 +10,13 @@ from contextlib import asynccontextmanager  # 非同期コンテキストマネ�
 
 from app.core.config import settings  # アプリケーション設定の読み込み
 from app.core.database import engine, Base  # データベースエンジンとベースモデル
+from app.core.logging_config import setup_logging, get_logger  # ロギング設定
 from app.api import contracts, judgments, obligations, versions, signatures, redline, zk_proofs  # APIルーターのインポート（V2: ...に加えzk_proofsを追加）
 from app.api import auth, rbac, approvals, audit, notifications, users  # V3: 認証、RBAC、承認、監査、通知、ユーザーAPI
+
+# ロギングの初期化
+setup_logging(level=settings.LOG_LEVEL, use_json=settings.LOG_JSON)
+logger = get_logger(__name__)
 
 
 @asynccontextmanager
@@ -24,11 +29,11 @@ async def lifespan(app: FastAPI):
     try:
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)  # 全テーブルを作成
-        print("✅ データベースは接続され、テーブルは作成されました")
+        logger.info("✅ データベースは接続され、テーブルは作成されました")
     except Exception as e:
         # データベース未接続でも起動を継続（開発用）
-        print(f"⚠️ データベース接続に失敗しました: {e}")
-        print("   開発用: データベース接続なしで起動します - 一部の機能は使用できません")
+        logger.error(f"⚠️ データベース接続に失敗しました: {str(e)}", exc_info=True)
+        logger.warning("   開発用: データベース接続なしで起動します - 一部の機能は使用できません")
     
     yield  # アプリケーション実行中
     
@@ -76,24 +81,33 @@ async def global_exception_handler(request: Request, exc: Exception):
     すべての未捕捉例外をキャッチするハンドラ
     """
     # エラー内容のログ出力（スタックトレース含む）
-    print(f"❌ Unhandled Exception: {str(exc)}")
-    traceback.print_exc()
+    logger.error(
+        f"❌ Unhandled Exception at {request.url.path}: {str(exc)}",
+        exc_info=True,
+        extra={
+            "path": request.url.path,
+            "method": request.method,
+            "client": request.client.host if request.client else None
+        }
+    )
     
     # 500エラーのレスポンス
     status_code = 500
-    detail = str(exc)
+    detail = "Internal server error occurred"
+    error_type = type(exc).__name__
     
     # HTTPExceptionの場合はそのステータスコードと詳細を使用
     if isinstance(exc, HTTPException):
         status_code = exc.status_code
         detail = exc.detail
+        logger.warning(f"HTTP {status_code}: {detail} at {request.url.path}")
     
     response = JSONResponse(
         status_code=status_code,
         content={
             "detail": detail,
-            "type": type(exc).__name__,
-            "path": request.url.path
+            "type": error_type,
+            "path": str(request.url.path)
         }
     )
     

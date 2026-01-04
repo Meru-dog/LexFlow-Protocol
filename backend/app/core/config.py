@@ -66,6 +66,10 @@ class Settings(BaseSettings):
     # 通知メール内のリンク生成に使用
     FRONTEND_URL: str = "http://localhost:5173"  # デプロイ時はVercel URLなどに変更
     
+    # ===== ロギング設定 =====
+    LOG_LEVEL: str = "INFO"  # ログレベル (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+    LOG_JSON: bool = False  # JSON形式でログを出力するか（本番環境ではTrue推奨）
+    
     # ===== オンチェーン設定 =====
     @property
     def cors_origins_list(self) -> List[str]:
