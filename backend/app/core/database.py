@@ -12,6 +12,10 @@ Base = declarative_base()
 # データベースURLの決定（PostgreSQLが利用できない場合はSQLiteを使用）
 DATABASE_URL = settings.DATABASE_URL
 
+# Render/Herokuなどの PostgreSQL URL (postgres://) を SQLAlchemy の asyncpg 形式 (postgresql+asyncpg://) に変換
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+asyncpg://", 1)
+
 # SQLiteの場合はスレッド間共有を許可する設定を追加
 engine_args = {}
 if DATABASE_URL.startswith("sqlite"):

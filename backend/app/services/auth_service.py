@@ -13,14 +13,12 @@ from jose import jwt, JWTError
 from eth_account.messages import encode_defunct
 from web3 import Web3
 
+from app.core.config import settings
+
 # パスワードハッシュ化設定
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-# JWT設定（環境変数から読み込むことを推奨）
-JWT_SECRET_KEY = "your-super-secret-key-change-in-production"
-JWT_ALGORITHM = "HS256"
-JWT_ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24  # 24時間
-JWT_REFRESH_TOKEN_EXPIRE_DAYS = 7
+# JWT設定は settings から取得するように変更
 
 
 class AuthService:
@@ -72,7 +70,7 @@ class AuthService:
             "exp": expire,
             "type": "access"
         }
-        return jwt.encode(to_encode, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM)
+        return jwt.encode(to_encode, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
     
     @staticmethod
     def create_refresh_token(user_id: str) -> str:
@@ -84,13 +82,13 @@ class AuthService:
             "type": "refresh",
             "jti": str(uuid.uuid4())  # ユニークID（失効管理用）
         }
-        return jwt.encode(to_encode, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM)
+        return jwt.encode(to_encode, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
     
     @staticmethod
     def decode_token(token: str) -> Optional[dict]:
         """トークンをデコード"""
         try:
-            payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
+            payload = jwt.decode(token, settings.JWT_SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
             return payload
         except JWTError:
             return None
@@ -143,7 +141,7 @@ class AuthService:
             "exp": expire,
             "type": "email_verification"
         }
-        return jwt.encode(to_encode, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM)
+        return jwt.encode(to_encode, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
     
     @staticmethod
     def verify_email_verification_token(token: str) -> Optional[Tuple[str, str]]:
@@ -165,7 +163,7 @@ class AuthService:
             "type": "password_reset",
             "jti": str(uuid.uuid4())
         }
-        return jwt.encode(to_encode, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM)
+        return jwt.encode(to_encode, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
     
     @staticmethod
     def verify_password_reset_token(token: str) -> Optional[str]:
