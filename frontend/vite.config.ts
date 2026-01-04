@@ -15,6 +15,17 @@ export default defineConfig({
       },
     }),
   ],
+  build: {
+    chunkSizeWarningLimit: 1000,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          vendor: ['react', 'react-dom', 'react-router-dom'],
+          web3: ['web3', 'eth-account'],
+        },
+      },
+    },
+  },
   server: {
     proxy: {
       '/api': {

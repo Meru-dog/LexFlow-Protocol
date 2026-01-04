@@ -43,6 +43,7 @@ class Settings(BaseSettings):
     JWT_SECRET_KEY: str = "change-this-in-production"  # 本番環境では変更必須
     JWT_ALGORITHM: str = "HS256"  # JWTのアルゴリズム
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30  # アクセストークンの有効期限（分）
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 7  # リフレッシュトークンの有効期限（日）
     
     # ===== CORS設定 =====
     # クロスオリジンリクエストを許可するURL（カンマ区切り）

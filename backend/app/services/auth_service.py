@@ -80,7 +80,7 @@ class AuthService:
     @staticmethod
     def create_access_token(user_id: str, email: str, expires_delta: Optional[timedelta] = None) -> str:
         """アクセストークンを生成"""
-        expire = datetime.utcnow() + (expires_delta or timedelta(minutes=JWT_ACCESS_TOKEN_EXPIRE_MINUTES))
+        expire = datetime.utcnow() + (expires_delta or timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES))
         to_encode = {
             "sub": user_id,
             "email": email,
@@ -92,7 +92,7 @@ class AuthService:
     @staticmethod
     def create_refresh_token(user_id: str) -> str:
         """リフレッシュトークンを生成"""
-        expire = datetime.utcnow() + timedelta(days=JWT_REFRESH_TOKEN_EXPIRE_DAYS)
+        expire = datetime.utcnow() + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
         to_encode = {
             "sub": user_id,
             "exp": expire,
