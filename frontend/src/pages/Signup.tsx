@@ -89,6 +89,7 @@ export const SignupPage: React.FC = () => {
                             value={displayName}
                             onChange={(e) => setDisplayName(e.target.value)}
                             placeholder="山田 太郎"
+                            autoComplete="name"
                         />
                     </div>
 
@@ -100,6 +101,7 @@ export const SignupPage: React.FC = () => {
                             value={email}
                             onChange={(e) => setEmail(e.target.value)}
                             placeholder="your@email.com"
+                            autoComplete="email"
                             required
                         />
                     </div>

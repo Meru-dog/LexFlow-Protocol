@@ -15,7 +15,9 @@ langchain>=0.1.0
 langchain-openai>=0.0.5
 pypdf>=3.17.0
 python-jose[cryptography]>=3.3.0
+bcrypt==4.0.1
 passlib[bcrypt]>=1.7.4
+cryptography>=41.0.0
 httpx>=0.26.0
 python-dotenv>=1.0.0
 email-validator>=2.1.0
