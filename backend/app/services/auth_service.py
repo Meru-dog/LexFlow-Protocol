@@ -27,19 +27,36 @@ class AuthService:
     # ===== パスワード関連 =====
     
     @staticmethod
+    def _pre_hash(password: str) -> str:
+        """Bcryptの72バイト制限を回避するためにSHA-256でプレハッシュ化(hex)"""
+        return hashlib.sha256(password.encode()).hexdigest()
+
+    @staticmethod
     def hash_password(password: str) -> str:
-        """パスワードをハッシュ化"""
-        return pwd_context.hash(password)
+        """パスワードをハッシュ化 (Bcrypt + SHA-256)"""
+        # SHA-256(hex)は常に64文字なのでBcryptの72バイト制限に常に収まる
+        return pwd_context.hash(AuthService._pre_hash(password))
     
     @staticmethod
     def verify_password(plain_password: str, hashed_password: str) -> bool:
         """パスワードを検証"""
         try:
-            # Bcrypt has a 72-byte limit. If it's longer, it shouldn't have been hashed anyway
-            # based on current validation, but we catch the error to avoid 500.
-            if len(plain_password.encode()) > 72:
-                return False
-            return pwd_context.verify(plain_password, hashed_password)
+            # 1. 新しい方式（プレハッシュあり）で検証
+            try:
+                if pwd_context.verify(AuthService._pre_hash(plain_password), hashed_password):
+                    return True
+            except Exception:
+                pass
+            
+            # 2. 旧方式（プレハッシュなし）でも確認（移行期間/既存ユーザー用）
+            # Bcrypt limit check to avoid crash if hashed_password was created without pre-hashing
+            if len(plain_password.encode()) <= 72:
+                try:
+                    return pwd_context.verify(plain_password, hashed_password)
+                except Exception:
+                    return False
+            
+            return False
         except Exception:
             return False
     
