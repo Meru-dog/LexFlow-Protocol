@@ -3,8 +3,9 @@
  */
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth, setTokens } from '../contexts/AuthContext';
 import { useWallet } from '../contexts/WalletContext';
+import { API_BASE } from '../services/api';
 import './Auth.css';
 
 export const LoginPage: React.FC = () => {
@@ -24,6 +25,7 @@ export const LoginPage: React.FC = () => {
 
         try {
             await login(email, password);
+            localStorage.setItem('login_timestamp', Date.now().toString());
             navigate('/');
         } catch (err) {
             setError(err instanceof Error ? err.message : 'ログインに失敗しました');
@@ -50,13 +52,16 @@ export const LoginPage: React.FC = () => {
             }
 
             // 3. バックエンドから nonce を取得
-            const nonceRes = await fetch('/api/v1/auth/wallet/nonce', {
+            const nonceRes = await fetch(`${API_BASE}/auth/wallet/nonce`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ address: walletAddress })
             });
 
-            if (!nonceRes.ok) throw new Error('Nonce取得に失敗しました');
+            if (!nonceRes.ok) {
+                const errorData = await nonceRes.json().catch(() => ({}));
+                throw new Error(errorData.detail || 'Nonce取得に失敗しました');
+            }
             const { message } = await nonceRes.json();
 
             // 4. MetaMaskで署名
@@ -66,16 +71,28 @@ export const LoginPage: React.FC = () => {
             });
 
             // 5.署名検証
-            const verifyRes = await fetch('/api/v1/auth/wallet/verify', {
+            const verifyRes = await fetch(`${API_BASE}/auth/wallet/verify`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ address: walletAddress, signature, message })
             });
 
-            if (!verifyRes.ok) throw new Error('署名検証に失敗しました');
+            if (!verifyRes.ok) {
+                const errorData = await verifyRes.json().catch(() => ({}));
+                throw new Error(errorData.detail || '署名検証に失敗しました');
+            }
 
-            // 6. ログイン時刻を保存（MetaMaskログインも1時間制限を適用）
-            localStorage.setItem('login_timestamp', Date.now().toString());
+            const data = await verifyRes.json();
+
+            // 6. トークンが返ってきた場合（ログイン成功）は保存
+            if (data.access_token) {
+                setTokens(data.access_token, data.refresh_token);
+                localStorage.setItem('login_timestamp', Date.now().toString());
+            } else {
+                // トークンが返ってこない場合はウォレット紐付け完了のみ
+                alert(data.message || '署名が検証されました。一旦通常のログインをお願いします。');
+                return;
+            }
 
             // 7. Homeに遷移
             navigate('/');

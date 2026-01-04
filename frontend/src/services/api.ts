@@ -393,9 +393,10 @@ export const api = {
         });
     },
 
-    async testSlackNotification() {
+    async testSlackNotification(webhookUrl?: string) {
         return fetchAPI('/users/me/test-slack', {
-            method: 'POST'
+            method: 'POST',
+            body: webhookUrl ? JSON.stringify({ webhook_url: webhookUrl }) : undefined
         });
     },
 
@@ -419,6 +420,12 @@ export const api = {
     async resendNotification(notificationId: string) {
         return fetchAPI(`/notifications/${notificationId}/resend`, {
             method: 'POST',
+        });
+    },
+
+    async testEmailNotification() {
+        return fetchAPI('/users/me/test-email', {
+            method: 'POST'
         });
     },
 

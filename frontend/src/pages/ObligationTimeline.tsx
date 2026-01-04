@@ -115,26 +115,43 @@ const ObligationTimeline: React.FC = () => {
         console.log(`💎 Payment complete. Hash: ${normalizedHash}`);
         console.log(`🔑 Formatted signature: ${signature}`);
 
-        // RPCの同期ラグを考慮して、少し長めに待機してから再試行する
+        // RPCの同期ラグを考慮して、段階的に待機しながら再試行する
         setIsAnalyzing(true);
-        setStatusMessage("トランザクションを確認中... (5秒ほどお待ちください)");
+        setStatusMessage("トランザクションを確認中... (ブロックチェーンの反映を待っています)");
 
-        setTimeout(async () => {
+        // 最大3回リトライするポーリング形式に変更
+        const pollExtraction = async (retryCount: number = 0) => {
+            const waitTime = retryCount === 0 ? 5000 : 7000; // 初回は5秒、2回目以降は7秒待機
+
+            setStatusMessage(`トランザクションを確認中... (${retryCount + 1}/3回目)`);
+
+            await new Promise(resolve => setTimeout(resolve, waitTime));
+
             try {
-                console.log("🔄 Retrying extraction with signature...");
+                console.log(`🔄 決済検証中... (${retryCount + 1}/3回目)`);
                 await handleExtract(signature);
                 setStatusMessage(null);
             } catch (err: any) {
-                console.error("❌ Post-payment extraction failed:", err);
-                // 402が再度出た場合は、再度モーダルが出るので特に対処不要だが、
-                // それ以外のエラーは表示する
-                if (err.status !== 402) {
+                console.error(`❌ 決済検証失敗:`, err);
+
+                // 402エラー（まだ確認できない）かつリトライ回数以内なら再試行
+                if (err.status === 402 && retryCount < 2) {
+                    await pollExtraction(retryCount + 1);
+                } else if (err.status !== 402) {
+                    // 402以外の致命的なエラーは表示
                     setError(err.message || '再試行に失敗しました');
+                    setIsAnalyzing(false);
+                    setStatusMessage(null);
+                } else {
+                    // 402でリトライ上限に達した場合
+                    setError("トランザクションの確認に時間がかかっています。少し時間をおいてから再度「AIで抽出する」ボタンを押してください。");
+                    setIsAnalyzing(false);
+                    setStatusMessage(null);
                 }
-                setIsAnalyzing(false);
-                setStatusMessage(null);
             }
-        }, 5000); // 5秒待機
+        };
+
+        await pollExtraction();
     };
 
     // 義務の完了

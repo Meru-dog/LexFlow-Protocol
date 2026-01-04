@@ -28,6 +28,10 @@ class UserProfileUpdateRequest(BaseModel):
     display_name: Optional[str] = None
     slack_webhook_url: Optional[str] = None
 
+class SlackTestRequest(BaseModel):
+    """Slack通知テストリクエスト"""
+    webhook_url: Optional[str] = None
+
 # ===== エンドポイント =====
 
 @router.get("/me", response_model=UserProfileResponse)
@@ -83,6 +87,7 @@ async def update_my_profile(
 
 @router.post("/me/test-slack")
 async def test_slack_notification(
+    request: Optional[SlackTestRequest] = None,
     current_user_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db)
 ):
@@ -90,7 +95,10 @@ async def test_slack_notification(
     result = await db.execute(select(User).where(User.id == current_user_id))
     user = result.scalar_one_or_none()
     
-    if not user or not user.slack_webhook_url:
+    # リクエストボディにURLがある場合はそれを使用、なければDBのURLを使用
+    webhook_url = (request.webhook_url if request else None) or (user.slack_webhook_url if user else None)
+    
+    if not webhook_url:
         raise HTTPException(status_code=400, detail="Slack Webhook URLが設定されていません")
     
     from app.services.notification_service import notification_service
@@ -120,7 +128,7 @@ async def test_slack_notification(
     notification = await notification_service.create_and_send(
         db=db,
         channel=NotificationChannel.SLACK,
-        recipient=user.slack_webhook_url,
+        recipient=webhook_url,
         subject="Slack Notification Test",
         payload=payload
     )
@@ -129,5 +137,49 @@ async def test_slack_notification(
     from app.models.models import NotificationStatus
     if notification.status == NotificationStatus.SENT:
         return {"success": True, "message": "テストメッセージを送信しました。Slackを確認してください。"}
+    else:
+        return {"success": False, "message": f"送信に失敗しました: {notification.error or '不明なエラー'}"}
+
+@router.post("/me/test-email")
+async def test_email_notification(
+    current_user_id: str = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db)
+):
+    """自身の登録メールアドレスにテストメッセージを送信"""
+    result = await db.execute(select(User).where(User.id == current_user_id))
+    user = result.scalar_one_or_none()
+    
+    if not user or not user.email:
+        raise HTTPException(status_code=400, detail="メールアドレスが登録されていません")
+    
+    from app.services.notification_service import notification_service
+    from app.models.models import NotificationChannel
+    
+    # テストメッセージを送信
+    payload = {
+        "body": f"LexFlow Protocolからのテストメールです。このメールが届いている場合、システム設定は正常です。\n\nユーザー: {user.display_name or user.email}",
+        "html_body": f"""
+        <h2>✅ LexFlow Protocol メールテスト</h2>
+        <p>LexFlow Protocolからのテストメールです。このメールが届いている場合、通知システムは正常に動作しています。</p>
+        <ul>
+            <li><strong>送信先:</strong> {user.email}</li>
+            <li><strong>表示名:</strong> {user.display_name or 'なし'}</li>
+        </ul>
+        <p>承認依頼や重要な通知もこのアドレスに届きます。</p>
+        """
+    }
+    
+    notification = await notification_service.create_and_send(
+        db=db,
+        channel=NotificationChannel.EMAIL,
+        recipient=user.email,
+        subject="【LexFlow】メール通知テスト",
+        payload=payload
+    )
+    
+    # ステータスをチェック
+    from app.models.models import NotificationStatus
+    if notification.status == NotificationStatus.SENT:
+        return {"success": True, "message": "テストメールを送信しました。受信ボックスを確認してください。"}
     else:
         return {"success": False, "message": f"送信に失敗しました: {notification.error or '不明なエラー'}"}

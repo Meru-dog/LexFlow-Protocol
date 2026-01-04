@@ -70,7 +70,7 @@ export const ProfilePage: React.FC = () => {
         setSaveMessage({ type: '', text: '' });
 
         try {
-            const res: any = await api.testSlackNotification();
+            const res: any = await api.testSlackNotification(slackWebhook);
             if (res.success) {
                 setSaveMessage({ type: 'success', text: res.message });
             } else {
@@ -78,6 +78,24 @@ export const ProfilePage: React.FC = () => {
             }
         } catch (err: any) {
             setSaveMessage({ type: 'error', text: 'テスト送信に失敗しました: ' + err.message });
+        } finally {
+            setIsTestingSlack(false);
+        }
+    };
+
+    const handleTestEmail = async () => {
+        setIsTestingSlack(true); // Slack用ステートを使い回すか、必要なら分けるが、簡略化のため共有
+        setSaveMessage({ type: '', text: '' });
+
+        try {
+            const res: any = await api.testEmailNotification();
+            if (res.success) {
+                setSaveMessage({ type: 'success', text: res.message });
+            } else {
+                setSaveMessage({ type: 'error', text: res.message });
+            }
+        } catch (err: any) {
+            setSaveMessage({ type: 'error', text: 'テストメール送信に失敗しました: ' + err.message });
         } finally {
             setIsTestingSlack(false);
         }
@@ -161,7 +179,26 @@ export const ProfilePage: React.FC = () => {
                     </div>
 
                     <form onSubmit={handleSaveProfile} className="profile-section">
-                        <h3>👤 基本情報</h3>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                            <h3 style={{ margin: 0 }}>👤 基本情報</h3>
+                            <button
+                                type="button"
+                                className="test-email-btn"
+                                onClick={handleTestEmail}
+                                disabled={isTestingSlack || isSaving || isLoadingProfile}
+                                style={{
+                                    fontSize: '0.75rem',
+                                    padding: '0.3rem 0.6rem',
+                                    background: 'rgba(59, 130, 246, 0.1)',
+                                    color: '#3b82f6',
+                                    border: '1px solid rgba(59, 130, 246, 0.2)',
+                                    borderRadius: '4px',
+                                    cursor: 'pointer'
+                                }}
+                            >
+                                📧 メールテスト送信
+                            </button>
+                        </div>
                         <div className="auth-form-group">
                             <label>表示名</label>
                             <input
@@ -181,7 +218,7 @@ export const ProfilePage: React.FC = () => {
                                 placeholder="https://hooks.slack.com/services/..."
                                 className="auth-input"
                             />
-                            <p className="input-tip">承認リクエストや重要通知を受け取るためのWebhook URL</p>
+                            <p className="input-tip">承認リクエストやリマインド通知をSlackで受け取るためのURL</p>
                         </div>
 
                         {saveMessage.text && (
@@ -197,7 +234,7 @@ export const ProfilePage: React.FC = () => {
                                 disabled={isSaving || isLoadingProfile}
                                 style={{ padding: '0.6rem 1rem', fontSize: '0.9rem', flex: 2 }}
                             >
-                                {isSaving ? '保存中...' : '変更を保存'}
+                                {isSaving ? '保存中...' : 'プロフィールを保存'}
                             </button>
                             <button
                                 type="button"
@@ -211,7 +248,7 @@ export const ProfilePage: React.FC = () => {
                                     background: 'linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)'
                                 }}
                             >
-                                {isTestingSlack ? '送信中...' : 'テスト送信'}
+                                {isTestingSlack ? '送信中...' : 'Slackテスト'}
                             </button>
                         </div>
                     </form>

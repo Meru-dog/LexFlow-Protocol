@@ -12,11 +12,13 @@ from sqlalchemy import select, func
 import json
 
 from app.core.database import get_db
+from app.core.logging_config import get_logger
 from app.models.models import Notification, NotificationChannel, NotificationStatus
 from app.services.notification_service import notification_service
 
 
 router = APIRouter(prefix="/notifications", tags=["通知 (Notifications)"])
+logger = get_logger(__name__)
 
 
 # ===== リクエスト/レスポンススキーマ =====
@@ -148,16 +150,24 @@ async def list_notifications(
     
     if channel:
         try:
-            ch = NotificationChannel(channel)
+            # 大文字小文字を区別せずにマッチング
+            channel_lower = channel.lower()
+            ch = NotificationChannel(channel_lower)
             stmt = stmt.where(Notification.channel == ch)
+            logger.debug(f"Filtering notifications by channel: {channel_lower}")
         except ValueError:
+            logger.warning(f"Invalid channel filter value: {channel}")
             pass
     
     if status:
         try:
-            st = NotificationStatus(status)
+            # 大文字小文字を区別せずにマッチング
+            status_upper = status.upper()
+            st = NotificationStatus(status_upper)
             stmt = stmt.where(Notification.status == st)
+            logger.debug(f"Filtering notifications by status: {status_upper}")
         except ValueError:
+            logger.warning(f"Invalid status filter value: {status}")
             pass
     
     # 総数を取得

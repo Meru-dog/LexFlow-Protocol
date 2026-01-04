@@ -66,21 +66,42 @@ class PaymentVerifier:
                      raise HTTPException(status_code=403, detail="トランザクションは既に使用されています")
 
             # 3. ブロックチェーン上でトランザクションを検証
-            valid, details = await blockchain_service.verify_token_transfer(
-                tx_hash=tx_hash,
-                expected_recipient=self.recipient_address,
-                expected_amount=self.amount,
-                token_address=self.token_address
-            )
+            # RPCのインデックス遅延を考慮し、内部で数回リトライする
+            import asyncio
+            max_retries = 3
+            retry_count = 0
+            valid = False
+            details = {}
+
+            while retry_count < max_retries:
+                valid, details = await blockchain_service.verify_token_transfer(
+                    tx_hash=tx_hash,
+                    expected_recipient=self.recipient_address,
+                    expected_amount=self.amount,
+                    token_address=self.token_address
+                )
+                if valid:
+                    break
+                
+                # 「確認が取れない」系のエラーの場合のみリトライ
+                err_msg = details.get("error", "")
+                if "確認が取れませんでした" in err_msg or "not found" in err_msg.lower():
+                    retry_count += 1
+                    if retry_count < max_retries:
+                        print(f"🔄 決済検証リトライ ({retry_count}/{max_retries}) for {tx_hash}...")
+                        await asyncio.sleep(3) # 3秒待機
+                    continue
+                else:
+                    # それ以外の致命的なエラー（受取人違い、金額不足等）は即時終了
+                    break
 
             if not valid:
-                error_msg = details.get("error", "支払い検証に失敗しました")
-                print(f"❌ Payment verification failed: {error_msg}")
+                error_msg = details.get("error", "決済検証に失敗しました")
+                print(f"❌ 決済検証失敗: {error_msg}")
                 # シグネチャはあるが無効な場合は、ヘッダーを含めず402エラー（または400）を投げる
-                # これによりフロントエンドはモーダルを再度開くのではなく、エラーメッセージを表示する
                 raise HTTPException(
                     status_code=status.HTTP_402_PAYMENT_REQUIRED,
-                    detail=f"支払い検証エラー: {error_msg}"
+                    detail=f"決済検証エラー: {error_msg}"
                 )
 
             # 4. トランザクションを記録
@@ -101,7 +122,6 @@ class PaymentVerifier:
             raise
         except Exception as e:
             print(f"支払い検証処理中に予期せぬエラーが発生しました: {e}")
-            # 検証ロジック自体のエラーの場合は、単なる402を返すのではなく詳細を表示
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"支払い検証システムの内部エラー: {str(e)}"

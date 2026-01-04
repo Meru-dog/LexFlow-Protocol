@@ -10,11 +10,13 @@ from fastapi import APIRouter, Depends, HTTPException, status, Request
 from pydantic import BaseModel, EmailStr, Field
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
-
+from sqlalchemy import select, or_
+from sqlalchemy.orm import selectinload
+import json
 from app.core.database import get_db
-from app.models.models import User, Wallet, UserStatus
+from app.models.models import User, Wallet, UserStatus, AuditEventType
 from app.services.auth_service import auth_service
+from app.services.audit_service import audit_service
 
 
 router = APIRouter(prefix="/auth", tags=["認証 (Authentication)"])
@@ -25,7 +27,7 @@ router = APIRouter(prefix="/auth", tags=["認証 (Authentication)"])
 class SignupRequest(BaseModel):
     """サインアップリクエスト"""
     email: EmailStr
-    password: str = Field(..., min_length=8, max_length=72)
+    password: str = Field(..., min_length=8, max_length=256)
     display_name: Optional[str] = None
 
 
@@ -39,7 +41,7 @@ class SignupResponse(BaseModel):
 class LoginRequest(BaseModel):
     """ログインリクエスト"""
     email: EmailStr
-    password: str = Field(..., max_length=72)
+    password: str = Field(..., max_length=256)
 
 
 class LoginResponse(BaseModel):
@@ -49,6 +51,7 @@ class LoginResponse(BaseModel):
     token_type: str = "bearer"
     user_id: str
     email: str
+    is_new_user: Optional[bool] = False
 
 
 class WalletNonceRequest(BaseModel):
@@ -84,7 +87,7 @@ class PasswordResetRequest(BaseModel):
 class PasswordResetConfirmRequest(BaseModel):
     """パスワードリセット確認リクエスト"""
     token: str
-    new_password: str = Field(..., min_length=8, max_length=72)
+    new_password: str = Field(..., min_length=8, max_length=256)
 
 
 class TokenRefreshRequest(BaseModel):
@@ -98,11 +101,16 @@ _nonce_store: dict = {}
 
 # ===== 認証依存関係 =====
 
+from app.core.logging_config import get_logger
+
+logger = get_logger(__name__)
+
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/v1/auth/login", auto_error=False)
 
 async def get_current_user_id(token: Optional[str] = Depends(oauth2_scheme)) -> str:
     """現在のユーザーIDを取得する依存関係"""
     if not token:
+        logger.warning("Authentication failed: No token provided")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="認証トークンが必要です",
@@ -111,6 +119,7 @@ async def get_current_user_id(token: Optional[str] = Depends(oauth2_scheme)) -> 
     
     user_id = auth_service.verify_access_token(token)
     if not user_id:
+        logger.warning(f"Authentication failed: Invalid or expired token: {token[:10]}...")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="無効なトークンまたは期限切れです",
@@ -178,10 +187,19 @@ async def login(request: LoginRequest, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(User).where(User.email == request.email))
     user = result.scalar_one_or_none()
     if not user:
+        await audit_service.log_event(
+            db, AuditEventType.AUTH_LOGIN_FAILED,
+            detail={"email": request.email, "reason": "User not found"}
+        )
         raise HTTPException(status_code=401, detail="メールアドレスまたはパスワードが正しくありません")
     
     # パスワード検証
     if not auth_service.verify_password(request.password, user.password_hash):
+        await audit_service.log_event(
+            db, AuditEventType.AUTH_LOGIN_FAILED,
+            actor_id=user.id,
+            detail={"email": request.email, "reason": "Invalid password"}
+        )
         raise HTTPException(status_code=401, detail="メールアドレスまたはパスワードが正しくありません")
     
     # ステータスチェック
@@ -194,6 +212,13 @@ async def login(request: LoginRequest, db: AsyncSession = Depends(get_db)):
     access_token = auth_service.create_access_token(user.id, user.email)
     refresh_token = auth_service.create_refresh_token(user.id)
     
+    # 監査ログ
+    await audit_service.log_event(
+        db, AuditEventType.AUTH_LOGIN,
+        actor_id=user.id,
+        detail={"email": user.email}
+    )
+    
     return LoginResponse(
         access_token=access_token,
         refresh_token=refresh_token,
@@ -203,13 +228,14 @@ async def login(request: LoginRequest, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/logout")
-async def logout():
+async def logout(current_user_id: str = Depends(get_current_user_id), db: AsyncSession = Depends(get_db)):
     """
     ログアウト
     
     - クライアント側でトークンを破棄
     - サーバー側ではリフレッシュトークンの失効を行う（将来実装）
     """
+    await audit_service.log_event(db, AuditEventType.AUTH_LOGOUT, actor_id=current_user_id)
     return {"message": "ログアウトしました"}
 
 
@@ -299,25 +325,42 @@ async def verify_wallet(
     del _nonce_store[address_lower]
     
     # 既存ウォレットチェック
-    result = await db.execute(select(Wallet).where(Wallet.address == request.address))
+    result = await db.execute(
+        select(Wallet).where(Wallet.address == address_lower).options(selectinload(Wallet.user))
+    )
     existing_wallet = result.scalar_one_or_none()
-    if existing_wallet:
-        return WalletVerifyResponse(
-            success=True,
-            wallet_id=existing_wallet.id,
-            message="このウォレットは既に登録されています"
+    
+    if existing_wallet and existing_wallet.user_id:
+        # ウォレットに紐付いたユーザーがいる場合はログイン
+        user = existing_wallet.user
+        access_token = auth_service.create_access_token(user.id, user.email)
+        refresh_token = auth_service.create_refresh_token(user.id)
+        
+        logger.info(f"メタマスクでのログイン成功: {address_lower}, user: {user.id}")
+        
+        # 監査ログ
+        await audit_service.log_event(
+            db, AuditEventType.AUTH_LOGIN,
+            actor_id=user.id,
+            actor_wallet=address_lower,
+            detail={"method": "metamask"}
+        )
+        
+        return LoginResponse(
+            access_token=access_token,
+            refresh_token=refresh_token,
+            user_id=user.id,
+            email=user.email,
+            is_new_user=False
         )
     
-    # 新規ウォレット登録（ユーザーIDはAuthorizationヘッダーから取得）
-    # 注：実際のユーザー紐付けはログイン後に行う（ここでは仮実装）
-    wallet_id = str(uuid.uuid4())
-    
-    # 仮のユーザーIDを設定（実際はJWTから取得）
-    # ここでは署名検証のみを行い、ユーザー紐付けは別途実装
+    # ウォレットが未登録またはユーザー未紐付けの場合
+    # ログイン中のユーザーがいれば紐付け、いなければ新規作成またはエラー
+    # ※今回は簡略化のため、署名検証成功のみを返す
     
     return WalletVerifyResponse(
         success=True,
-        wallet_id=None,  # ユーザー紐付け前
+        wallet_id=existing_wallet.id if existing_wallet else None,
         message="署名が検証されました。ログイン後にウォレットを紐付けできます。"
     )
 

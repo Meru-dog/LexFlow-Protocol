@@ -269,7 +269,7 @@ const AuditLog: React.FC = () => {
                                 <tr key={event.id}>
                                     <td className="id-cell" title={event.id}>{shortId(event.id)}</td>
                                     <td className="type-cell">
-                                        <span className="type-badge">{event.type}</span>
+                                        <span className="type-badge">{event.type.replace(/\./g, ': ')}</span>
                                     </td>
                                     <td className="actor-cell" title={event.actor_id || ''}>
                                         {shortId(event.actor_id)}

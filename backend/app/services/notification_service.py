@@ -12,6 +12,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.models.models import Notification, NotificationChannel, NotificationStatus
+from app.core.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
 class NotificationService:
@@ -41,7 +44,7 @@ class NotificationService:
         
         # SMTP送信が無効の場合はログのみ
         if not settings.USE_SMTP:
-            print("[EMAIL] SMTP が無効です。 メールは送信されません。")
+            logger.info(f"[EMAIL] SMTP disabled. Email to {recipient} not sent (subject: {subject})")
             return True
         
         # 実際のSMTP送信
@@ -71,11 +74,11 @@ class NotificationService:
                 server.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
                 server.send_message(msg)
             
-            print("[EMAIL] メールを送信しました")
+            logger.info(f"[EMAIL] Successfully sent email to {recipient}")
             return True
             
         except Exception as e:
-            print(f"[EMAIL ERROR] メールの送信に失敗しました: {str(e)}")
+            logger.error(f"[EMAIL ERROR] Failed to send email to {recipient}: {str(e)}", exc_info=True)
             # 送信失敗時もログには記録されているため、Falseを返す
             return False
     
@@ -93,8 +96,8 @@ class NotificationService:
         - Webhookを使用して実際に送信
         - 送信失敗時はログに記録
         """
-        print(f"[SLACK] Webhook: {webhook_url[:50]}...")
-        print(f"[SLACK] Message: {message[:100]}...")
+        logger.debug(f"[SLACK] Sending to webhook: {webhook_url[:50]}...")
+        logger.debug(f"[SLACK] Message: {message[:100]}...")
         
         # 実際のWebhook送信
         try:
@@ -108,14 +111,14 @@ class NotificationService:
                 response = await client.post(webhook_url, json=payload)
                 
                 if response.status_code == 200:
-                    print("[SLACK] メッセージを送信しました")
+                    logger.info("[SLACK] Successfully sent message to Slack")
                     return True
                 else:
-                    print(f"[SLACK ERROR] Webhook送信に失敗しました: {response.status_code}: {response.text}")
+                    logger.error(f"[SLACK ERROR] Webhook送信に失敗しました: {response.status_code}: {response.text}")
                     return False
                     
         except Exception as e:
-            print(f"[SLACK ERROR] Webhook送信に失敗しました: {str(e)}")
+            logger.error(f"[SLACK ERROR] Failed to send Slack message: {str(e)}", exc_info=True)
             return False
     
     # ===== 通知作成と送信 =====

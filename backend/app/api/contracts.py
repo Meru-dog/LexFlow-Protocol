@@ -12,7 +12,7 @@ import os
 import shutil
 
 from app.core.database import get_db
-from app.models.models import Contract, Condition, ContractStatus, ConditionStatus, Workspace, WorkspaceUser
+from app.models.models import Contract, Condition, ContractStatus, ConditionStatus, Workspace, WorkspaceUser, AuditEventType
 from app.schemas.schemas import (
     ContractCreate, ContractResponse, ContractDetail,
     ConditionCreate, ConditionResponse, ContractParseResponse
@@ -20,6 +20,7 @@ from app.schemas.schemas import (
 from app.services.contract_parser import contract_parser
 from app.services.blockchain_service import blockchain_service
 from app.services.version_service import version_service  # V2: F3機能
+from app.services.audit_service import audit_service
 from app.api.auth import get_current_user_id
 
 # ルーターの定義
@@ -119,6 +120,17 @@ async def upload_contract(
             title="Initial Uploaded Version",
             summary=parsed.summary[:500] if parsed.summary else "Initial version",
             filename=file.filename
+        )
+        
+        # 監査ログ
+        await audit_service.log_event(
+            db, AuditEventType.CONTRACT_UPLOADED,
+            actor_id=current_user_id,
+            workspace_id=workspace_id,
+            contract_id=contract_id,
+            resource_id=contract_id,
+            resource_type="contract",
+            detail={"title": contract_title, "filename": file.filename}
         )
         
         # コミット
@@ -270,6 +282,16 @@ async def activate_contract(
     contract.status = ContractStatus.ACTIVE
     # ブロックチェーントランザクションハッシュを更新
     contract.blockchain_tx_hash = tx_result["tx_hash"]
+    # 監査ログ
+    await audit_service.log_event(
+        db, AuditEventType.CONTRACT_METADATA_UPDATED, # アクティベートもメタデータ更新の一環として一旦記録
+        workspace_id=contract.workspace_id,
+        contract_id=contract.id,
+        resource_id=contract.id,
+        resource_type="contract",
+        detail={"action": "activate", "tx_hash": tx_result["tx_hash"]}
+    )
+    
     # データベースをコミット
     await db.commit()
     

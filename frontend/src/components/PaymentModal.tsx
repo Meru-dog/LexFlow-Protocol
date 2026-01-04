@@ -90,29 +90,57 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, pay
                     } else if (switchError.code === 4001) {
                         // ユーザーがキャンセルした場合
                         throw new Error("ネットワーク切り替えがキャンセルされました");
+                    } else if (switchError.code === -32002) {
+                        throw new Error("MetaMaskでネットワーク切り替えのリクエストが進行中です。MetaMaskを確認してください。");
                     } else {
                         throw switchError;
                     }
                 }
             }
 
-            const accounts = await ethereum.request({ method: 'eth_requestAccounts' });
+            // アカウント取得の前に、既に接続されているか確認
+            let accounts = [];
+            try {
+                accounts = await ethereum.request({ method: 'eth_accounts' });
+            } catch (e) {
+                console.warn("Failed to get accounts:", e);
+            }
+
+            if (accounts.length === 0) {
+                try {
+                    accounts = await ethereum.request({ method: 'eth_requestAccounts' });
+                } catch (reqError: any) {
+                    if (reqError.code === -32002) {
+                        throw new Error("MetaMaskで接続リクエストが既に開いています。MetaMaskを確認してください。");
+                    }
+                    throw reqError;
+                }
+            }
+
             const account = accounts[0];
 
             // ERC20 Transfer Data
             const toAddress = paymentInfo.recipient.replace("0x", "");
-            const amountWei = BigInt(paymentInfo.price * 10 ** 18);
+            const amountWei = BigInt(Math.floor(paymentInfo.price * 10 ** 18)); // 小数点誤差を防ぐ
             const methodId = "0xa9059cbb"; // transfer(address,uint256)
             const data = methodId + toAddress.padStart(64, "0") + amountWei.toString(16).padStart(64, "0");
 
-            const txHash = await ethereum.request({
-                method: 'eth_sendTransaction',
-                params: [{
-                    from: account,
-                    to: paymentInfo.token_address,
-                    data: data,
-                }],
-            });
+            let txHash;
+            try {
+                txHash = await ethereum.request({
+                    method: 'eth_sendTransaction',
+                    params: [{
+                        from: account,
+                        to: paymentInfo.token_address,
+                        data: data,
+                    }],
+                });
+            } catch (txError: any) {
+                if (txError.code === -32002) {
+                    throw new Error("MetaMaskで送信リクエストが既に開いています。MetaMaskを確認してください。");
+                }
+                throw txError;
+            }
 
             // 成功状態へ移行
             setStep('success');
@@ -125,9 +153,9 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, pay
             let msg = err.message || "支払いに失敗しました";
 
             // -32603 (rate limited) も追加
-            if (err.code === -32002 || err.code === -32603 || msg.includes("too many errors") || msg.toLowerCase().includes("rate limited")) {
-                msg = "RPC接続制限エラーです。Metamask内でリクエストが詰まっているか、ネットワークの混雑により制限がかかっています。30秒ほど待ってから「再試行」を押すか、Metamaskを一度ロックして解除（またはブラウザを再起動）してください。";
-                setRetryDelay(30);
+            if (err.code === -32002 || err.code === -32603 || msg.includes("too many errors") || msg.toLowerCase().includes("rate limited") || msg.includes("already pending")) {
+                msg = "RPC接続制限、またはMetaMaskの操作待ちです。MetaMaskウィンドウが最小化されていないか確認してください。リクエストが詰まっている場合は30秒ほど待ってから再試行してください。";
+                setRetryDelay(15); // ちょっと短めにする
             }
             setError(msg);
         } finally {

@@ -23,12 +23,12 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 // ===== APIベースURL =====
 // const API_BASE = '/api/v1'; (Moved to services/api.ts for unified configuration)
-const SESSION_DURATION = 60 * 60 * 1000; // 1時間（ミリ秒）
+const SESSION_DURATION = 30 * 60 * 1000; // 30分（ミリ秒） - backend/app/core/config.pyと同期
 
 // ===== トークン管理 =====
 const getAccessToken = () => localStorage.getItem('access_token');
 const getRefreshToken = () => localStorage.getItem('refresh_token');
-const setTokens = (accessToken: string, refreshToken: string) => {
+export const setTokens = (accessToken: string, refreshToken: string) => {
     localStorage.setItem('access_token', accessToken);
     localStorage.setItem('refresh_token', refreshToken);
 };

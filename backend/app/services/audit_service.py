@@ -71,10 +71,11 @@ class AuditService:
         監査イベントを記録
         
         - ハッシュチェーンを維持
-        - 自動的にタイムスタンプを設定
+        - 明示的なタイムスタンプを使用してハッシュの一貫性を確保
         """
         event_id = str(uuid.uuid4())
-        timestamp = datetime.utcnow().isoformat()
+        created_at = datetime.utcnow()
+        timestamp_str = created_at.isoformat()
         detail_json = json.dumps(detail, ensure_ascii=False) if detail else None
         
         # 前のハッシュを取得
@@ -89,7 +90,7 @@ class AuditService:
             contract_id=contract_id,
             detail_json=detail_json,
             prev_hash=prev_hash,
-            timestamp=timestamp
+            timestamp=timestamp_str
         )
         
         # イベント作成
@@ -106,7 +107,8 @@ class AuditService:
             resource_type=resource_type,
             detail_json=detail_json,
             prev_hash=prev_hash,
-            hash=event_hash
+            hash=event_hash,
+            created_at=created_at
         )
         db.add(event)
         
@@ -116,14 +118,6 @@ class AuditService:
     async def verify_chain(db: AsyncSession, workspace_id: Optional[str] = None, limit: int = 100) -> Dict[str, Any]:
         """
         ハッシュチェーンの整合性を検証
-        
-        Returns:
-            {
-                "valid": bool,
-                "checked_count": int,
-                "first_invalid_id": str (if any),
-                "message": str
-            }
         """
         stmt = select(AuditEvent).order_by(AuditEvent.created_at.asc())
         if workspace_id:
@@ -141,17 +135,20 @@ class AuditService:
             }
         
         prev_hash = None
-        for event in events:
-            # 前のハッシュが一致するか確認
+        for i, event in enumerate(events):
+            # 1. 前のハッシュが一致するか確認
             if event.prev_hash != prev_hash:
                 return {
                     "valid": False,
-                    "checked_count": events.index(event),
+                    "checked_count": i,
                     "first_invalid_id": event.id,
-                    "message": f"イベント {event.id} の前ハッシュが不整合です"
+                    "message": f"イベント {event.id} の前ハッシュが不整合です (期待: {prev_hash or 'None'}, 実際: {event.prev_hash})"
                 }
             
-            # ハッシュを再計算して検証
+            # 2. ハッシュを再計算して検証
+            # ISO format への変換は log_event と一致させる
+            timestamp_str = event.created_at.isoformat() if event.created_at else ""
+            
             expected_hash = AuditService.compute_event_hash(
                 event_id=event.id,
                 event_type=event.type.value,
@@ -160,12 +157,16 @@ class AuditService:
                 contract_id=event.contract_id,
                 detail_json=event.detail_json,
                 prev_hash=event.prev_hash,
-                timestamp=event.created_at.isoformat() if event.created_at else ""
+                timestamp=timestamp_str
             )
             
-            # 注：created_atのフォーマットの違いによる誤検知を避けるため、
-            # 実際の実装では保存時のtimestamp文字列も保持することを推奨
-            # ここでは簡略化のためハッシュ自体の検証はスキップ
+            if event.hash != expected_hash:
+                return {
+                    "valid": False,
+                    "checked_count": i,
+                    "first_invalid_id": event.id,
+                    "message": f"イベント {event.id} の自体ハッシュが不整合です (改ざんの疑い)"
+                }
             
             prev_hash = event.hash
         
@@ -173,7 +174,7 @@ class AuditService:
             "valid": True,
             "checked_count": len(events),
             "first_invalid_id": None,
-            "message": f"{len(events)}件のイベントを検証しました。整合性に問題はありません。"
+            "message": f"{len(events)}件のイベントを検証し、すべての整合性が確認されました。"
         }
 
 

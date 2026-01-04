@@ -18,8 +18,9 @@ from app.core.database import get_db
 from app.api.auth import get_current_user_id
 from app.models.models import (
     Workspace, User, UserStatus, Role, Permission, RolePermission,
-    WorkspaceUser, WorkspaceUserStatus, ContractACL, ACLSubjectType, Contract
+    WorkspaceUser, WorkspaceUserStatus, ContractACL, ACLSubjectType, Contract, AuditEventType
 )
+from app.services.audit_service import audit_service
 
 
 router = APIRouter(tags=["権限管理 (RBAC & ACL)"])
@@ -235,6 +236,16 @@ async def create_workspace(
         )
         db.add(workspace_user)
     
+    # 監査ログ
+    await audit_service.log_event(
+        db, AuditEventType.RBAC_ROLE_CREATED, # ロール作成も含む広義のRBAC操作として記録
+        actor_id=current_user_id,
+        workspace_id=workspace_id,
+        resource_id=workspace_id,
+        resource_type="workspace",
+        detail={"name": request.name, "action": "workspace_created"}
+    )
+    
     await db.commit()
     await db.refresh(workspace)
     
@@ -326,6 +337,15 @@ async def create_role(workspace_id: str, request: RoleCreate, db: AsyncSession =
                 permission_id=perm_id
             )
             db.add(role_perm)
+    
+    # 監査ログ
+    await audit_service.log_event(
+        db, AuditEventType.RBAC_ROLE_CREATED,
+        workspace_id=workspace_id,
+        resource_id=role_id,
+        resource_type="role",
+        detail={"name": request.name}
+    )
     
     await db.commit()
     
@@ -496,6 +516,15 @@ async def invite_user(workspace_id: str, request: WorkspaceUserInvite, db: Async
         status=WorkspaceUserStatus.INVITED
     )
     db.add(ws_user)
+    # 監査ログ
+    await audit_service.log_event(
+        db, AuditEventType.RBAC_USER_INVITED,
+        workspace_id=workspace_id,
+        resource_id=ws_user.id,
+        resource_type="workspace_user",
+        detail={"user_id": user.id, "role": role.name}
+    )
+    
     await db.commit()
     await db.refresh(ws_user)
     

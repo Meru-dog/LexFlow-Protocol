@@ -20,9 +20,10 @@ from app.api.auth import get_current_user_id
 from app.models.models import (
     ApprovalFlow, ApprovalRequest, ApprovalTask, MagicLink,
     ApprovalRequestStatus, ApprovalTaskStatus, ACLSubjectType,
-    Contract, Workspace, User
+    Contract, Workspace, User, AuditEventType
 )
 from app.services.notification_service import notification_service
+from app.services.audit_service import audit_service
 
 
 
@@ -311,6 +312,16 @@ async def create_approval_request(
                 "status": "pending"
             })
     
+    # 監査ログ
+    await audit_service.log_event(
+        db, AuditEventType.APPROVAL_REQUEST_CREATED,
+        actor_id=created_by,
+        contract_id=request.contract_id,
+        resource_id=request_id,
+        resource_type="approval_request",
+        detail={"message": request.message, "due_at": request.due_at.isoformat() if request.due_at else None}
+    )
+    
     await db.commit()
     await db.refresh(approval_request)
     
@@ -465,6 +476,15 @@ async def approve_task(task_id: str, action: ApprovalTaskAction, db: AsyncSessio
     
     await db.commit()
     
+    # 監査ログ
+    await audit_service.log_event(
+        db, AuditEventType.APPROVAL_APPROVED,
+        actor_id=task.assignee_id if task.assignee_type == ACLSubjectType.USER else None,
+        resource_id=task.id,
+        resource_type="approval_task",
+        detail={"comment": action.comment}
+    )
+    
     return {"message": "承認しました", "task_id": task_id}
 
 
@@ -498,6 +518,15 @@ async def reject_task(task_id: str, action: ApprovalTaskAction, db: AsyncSession
     
     await db.commit()
     
+    # 監査ログ
+    await audit_service.log_event(
+        db, AuditEventType.APPROVAL_REJECTED,
+        actor_id=task.assignee_id if task.assignee_type == ACLSubjectType.USER else None,
+        resource_id=task.id,
+        resource_type="approval_task",
+        detail={"comment": action.comment}
+    )
+    
     return {"message": "否認しました", "task_id": task_id}
 
 
@@ -529,6 +558,15 @@ async def return_task(task_id: str, action: ApprovalTaskAction, db: AsyncSession
     await _notify_requester_of_task_action(task, "RETURNED", db)
     
     await db.commit()
+    
+    # 監査ログ
+    await audit_service.log_event(
+        db, AuditEventType.APPROVAL_RETURNED,
+        actor_id=task.assignee_id if task.assignee_type == ACLSubjectType.USER else None,
+        resource_id=task.id,
+        resource_type="approval_task",
+        detail={"comment": action.comment}
+    )
     
     return {"message": "差戻ししました", "task_id": task_id}
 

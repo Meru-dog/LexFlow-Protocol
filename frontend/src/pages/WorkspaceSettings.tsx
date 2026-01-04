@@ -138,12 +138,15 @@ export const WorkspaceSettings: React.FC = () => {
                 method: 'POST',
                 body: JSON.stringify({
                     name: newWorkspaceName,
-                    user_id: newWorkspaceOwner,
+                    user_id: newWorkspaceOwner || undefined,
                     role_name: newWorkspaceRole
                 })
             });
 
-            if (!res.ok) throw new Error('ワークスペースの作成に失敗しました');
+            if (!res.ok) {
+                const errorData = await res.json().catch(() => ({}));
+                throw new Error(errorData.detail || 'ワークスペースの作成に失敗しました');
+            }
 
             const newWs = await res.json();
             setWorkspaces([...workspaces, newWs]);
