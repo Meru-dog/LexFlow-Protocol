@@ -44,7 +44,10 @@ async def get_my_profile(
     user = result.scalar_one_or_none()
     
     if not user:
-        raise HTTPException(status_code=404, detail="ユーザーが見つかりません")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, 
+            detail="ユーザー情報が失われました（DBリセット等）。再ログインしてください"
+        )
         
     return UserProfileResponse(
         id=user.id,
