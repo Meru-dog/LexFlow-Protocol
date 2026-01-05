@@ -44,7 +44,7 @@ class NotificationService:
         
         # SMTP送信が無効の場合はログのみ
         if not settings.USE_SMTP:
-            logger.info(f"[EMAIL] SMTP disabled. Email to {recipient} not sent (subject: {subject})")
+            logger.warning(f"[EMAIL] SMTP機能が無効です(USE_SMTP=False)。{recipient} へのメールは送信されませんでした。開発モードとして成功を返します。")
             return True
         
         # 実際のSMTP送信
@@ -53,13 +53,19 @@ class NotificationService:
             from email.mime.text import MIMEText
             from email.mime.multipart import MIMEMultipart
             
+            from email.header import Header
+            
             # メッセージ作成
             msg = MIMEMultipart('alternative')
+            
             # Gmail SMTPでは認証ユーザーとFromが一致している必要があるため、SMTP_USERを優先
             from_email = settings.SMTP_USER if settings.SMTP_USER else settings.SMTP_FROM_EMAIL
-            msg['From'] = f"{settings.SMTP_FROM_NAME} <{from_email}>"
+            
+            # 送信元名の設定（Headerを使用してUTF-8エンコード）
+            from_name = Header(settings.SMTP_FROM_NAME, 'utf-8').encode()
+            msg['From'] = f"{from_name} <{from_email}>"
             msg['To'] = recipient
-            msg['Subject'] = subject
+            msg['Subject'] = Header(subject, 'utf-8')
             
             # プレーンテキスト部分
             part1 = MIMEText(body, 'plain', 'utf-8')

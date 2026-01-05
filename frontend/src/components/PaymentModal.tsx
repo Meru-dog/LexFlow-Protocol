@@ -103,7 +103,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, pay
             try {
                 accounts = await ethereum.request({ method: 'eth_accounts' });
             } catch (e) {
-                console.warn("Failed to get accounts:", e);
+                console.warn("アカウント取得に失敗しました:", e);
             }
 
             if (accounts.length === 0) {

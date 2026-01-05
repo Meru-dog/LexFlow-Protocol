@@ -189,7 +189,7 @@ async def login(request: LoginRequest, db: AsyncSession = Depends(get_db)):
     if not user:
         await audit_service.log_event(
             db, AuditEventType.AUTH_LOGIN_FAILED,
-            detail={"email": request.email, "reason": "User not found"}
+            detail={"email": request.email, "reason": "ユーザーが見つかりません"}
         )
         raise HTTPException(status_code=401, detail="メールアドレスまたはパスワードが正しくありません")
     
@@ -198,7 +198,7 @@ async def login(request: LoginRequest, db: AsyncSession = Depends(get_db)):
         await audit_service.log_event(
             db, AuditEventType.AUTH_LOGIN_FAILED,
             actor_id=user.id,
-            detail={"email": request.email, "reason": "Invalid password"}
+            detail={"email": request.email, "reason": "パスワードが正しくありません"}
         )
         raise HTTPException(status_code=401, detail="メールアドレスまたはパスワードが正しくありません")
     

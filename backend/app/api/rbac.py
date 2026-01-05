@@ -21,6 +21,7 @@ from app.models.models import (
     WorkspaceUser, WorkspaceUserStatus, ContractACL, ACLSubjectType, Contract, AuditEventType
 )
 from app.services.audit_service import audit_service
+from app.services.notification_service import notification_service
 
 
 router = APIRouter(tags=["権限管理 (RBAC & ACL)"])
@@ -527,6 +528,28 @@ async def invite_user(workspace_id: str, request: WorkspaceUserInvite, db: Async
     
     await db.commit()
     await db.refresh(ws_user)
+    
+    # ユーザーに招待通知を送信
+    try:
+        from app.core.config import settings
+        payload = {
+            "body": f"LexFlow Protocolのワークスペース「{workspace.name}」に招待されました。\n\n以下のリンクからログインしてください:\n{settings.FRONTEND_URL}/login",
+            "html_body": f"""
+            <h2>🏢 ワークスペースへの招待</h2>
+            <p>LexFlow Protocolのワークスペース<strong>「{workspace.name}」</strong>に招待されました。</p>
+            <p>役割: {role.name}</p>
+            <p><a href="{settings.FRONTEND_URL}/login" style="background-color: #4CAF50; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">ログインして開始する</a></p>
+            """,
+            "message": f"🏢 ワークスペース「{workspace.name}」に招待されました"
+        }
+        await notification_service.notify_user(
+            db=db,
+            user=user,
+            subject=f"【LexFlow】ワークスペース招待: {workspace.name}",
+            payload=payload
+        )
+    except Exception as e:
+        print(f"[NOTIFICATION ERROR] 招待通知の送信に失敗しました: {str(e)}")
     
     return WorkspaceUserResponse(
         id=ws_user.id,
