@@ -34,6 +34,7 @@ async def upload_contract(
     payer_address: Optional[str] = Form(None), # 支払者のアドレスの指定 (Form)
     lawyer_address: str = Form(...), # 裁判のアドレスの指定 (Form)
     total_amount: Optional[float] = Form(None), # 手動での総額指定 (Form)
+    workspace_id: Optional[str] = Form(None), # V3: アップロード先ワークスペース (Form)
     db: AsyncSession = Depends(get_db), # データベースセッション
     current_user_id: str = Depends(get_current_user_id),
 ):
@@ -46,20 +47,20 @@ async def upload_contract(
     """
     filename = file.filename.lower()
     if not (filename.endswith(".pdf") or filename.endswith(".txt") or filename.endswith(".md")):
-        raise HTTPException(status_code=400, detail="Only PDF, Text, and Markdown files are accepted")
+        raise HTTPException(status_code=400, detail="PDF、Text、Markdownファイルのみを許容します")
     
-    print(f"📄 Uploading file: {file.filename}")
+    print(f"📄 ファイルアップロード: {file.filename}")
     
     try:
         # ファイルの内容を読み込んで、ハッシュ値を計算
         file_content = await file.read()
-        print(f"🔍 File read: {len(file_content)} bytes")
+        print(f"🔍 ファイル読み込み: {len(file_content)} bytes")
         file_hash = contract_parser.compute_hash(file_content)
         
         # AIを使用してコントラクトを解析して、解析結果を取得
-        print("🤖 Starting AI parsing...")
+        print("🤖 AI解析開始...")
         parsed = await contract_parser.parse_contract(file_content, filename=file.filename)
-        print("✅ AI parsing completed")
+        print("✅ AI解析完了")
         
         # コントラクトIDの生成
         contract_id = f"contract_{uuid.uuid4().hex[:12]}"
@@ -82,19 +83,22 @@ async def upload_contract(
 
         # コントラクトレコードの作成
         print("💾 databaseに保存...")
-        # ユーザーの最初のワークスペースを取得
-        ws_result = await db.execute(
-            select(Workspace.id)
-            .join(WorkspaceUser)
-            .where(WorkspaceUser.user_id == current_user_id)
-            .limit(1)
-        )
-        workspace_id = ws_result.scalar_one_or_none()
+        # ワークスペースを指定のID、またはユーザーの最初のワークスペースを取得
+        if workspace_id:
+            final_workspace_id = workspace_id
+        else:
+            ws_result = await db.execute(
+                select(Workspace.id)
+                .join(WorkspaceUser)
+                .where(WorkspaceUser.user_id == current_user_id)
+                .limit(1)
+            )
+            final_workspace_id = ws_result.scalar_one_or_none()
         
         # コントラクトオブジェクトを作成
         contract = Contract(
             id=contract_id,
-            workspace_id=workspace_id,  # ワークスペースIDを設定
+            workspace_id=final_workspace_id,  # ワークスペースIDを設定
             title=parsed.title or title or "Untitled Contract",
             parties=json.dumps(parsed.parties),
             payer_address=payer_address if payer_address and payer_address != "" else None,
@@ -111,14 +115,14 @@ async def upload_contract(
         db.add(contract)
         
         # V2: F3 初期バージョンの作成
-        print("📁 Creating initial version record...")
+        print("📁 初期バージョン作成...")
         await version_service.create_version(
             db=db,
             case_id=contract_id,
             file_content=file_content,
             creator_address=lawyer_address if lawyer_address and lawyer_address != "" else "0x0000000000000000000000000000000000000000",
-            title="Initial Uploaded Version",
-            summary=parsed.summary[:500] if parsed.summary else "Initial version",
+            title="初期バージョン",
+            summary=parsed.summary[:500] if parsed.summary else "初期バージョン",
             filename=file.filename
         )
         
@@ -135,13 +139,13 @@ async def upload_contract(
         
         # コミット
         await db.commit()
-        print(f"🎉 Contract saved with ID: {contract_id}")
+        print(f"🎉 コントラクト保存完了: {contract_id}")
         
     except Exception as e:
-        print(f"❌ Error during contract upload: {str(e)}")
+        print(f"❌ コントラクトアップロード中にエラー: {str(e)}")
         import traceback
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"サーバーエラー: {str(e)}")
     
     return ContractParseResponse(
         contract_id=contract_id,
@@ -219,7 +223,7 @@ async def get_contract(
     
     # コントラクトレコードが存在しない場合は、404エラーを返す
     if not contract:
-        raise HTTPException(status_code=404, detail="Contract not found")
+        raise HTTPException(status_code=404, detail="コントラクトが見つかりません")
     
     return ContractDetail(
         id=contract.id,
@@ -263,10 +267,10 @@ async def activate_contract(
     contract = result.scalar_one_or_none()
     
     if not contract:
-        raise HTTPException(status_code=404, detail="Contract not found")
+        raise HTTPException(status_code=404, detail="コントラクトが見つかりません")
     
     if contract.status != ContractStatus.PENDING:
-        raise HTTPException(status_code=400, detail="Contract is not in pending status")
+        raise HTTPException(status_code=400, detail="コントラクトは保留中ではありません")
     
     # オンチェーンのエスクローコントラクトを作成
     tx_result = await blockchain_service.create_escrow_contract(
@@ -296,7 +300,7 @@ async def activate_contract(
     await db.commit()
     
     return {
-        "message": "Contract activated successfully",
+        "message": "コントラクトのアクティベート完了",
         "tx_hash": tx_result["tx_hash"],
         "etherscan_url": blockchain_service.get_etherscan_url(tx_result["tx_hash"]),
     }
@@ -315,7 +319,7 @@ async def add_condition(
     contract = result.scalar_one_or_none()
     
     if not contract:
-        raise HTTPException(status_code=404, detail="Contract not found")
+        raise HTTPException(status_code=404, detail="コントラクトが見つかりません")
     
     condition_id = f"cond_{uuid.uuid4().hex[:12]}"
     
@@ -370,10 +374,10 @@ async def get_contract_text(
     contract = result.scalar_one_or_none()
     
     if not contract:
-        raise HTTPException(status_code=404, detail="Contract not found")
+        raise HTTPException(status_code=404, detail="コントラクトが見つかりません")
     
     if not os.path.exists(contract.file_url):
-         raise HTTPException(status_code=404, detail="File not found")
+         raise HTTPException(status_code=404, detail="ファイルが見つかりません")
          
     with open(contract.file_url, "rb") as f:
         file_content = f.read()

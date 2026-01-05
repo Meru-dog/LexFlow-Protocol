@@ -31,31 +31,46 @@ export function UploadPage() {
     const [selectedFlowId, setSelectedFlowId] = useState<string>('');
     const [approvalMessage, setApprovalMessage] = useState('');
     const [creatingApproval, setCreatingApproval] = useState(false);
+    const [workspaces, setWorkspaces] = useState<any[]>([]);
+    const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string>('');
+
+    // ワークスペースを取得
+    useEffect(() => {
+        const loadWorkspaces = async () => {
+            try {
+                const res = await authFetch(`${API_BASE}/workspaces`);
+                if (res.ok) {
+                    const data = await res.json();
+                    setWorkspaces(data);
+                    if (data.length > 0) {
+                        setSelectedWorkspaceId(data[0].id);
+                    }
+                }
+            } catch (err) {
+                console.error('ワークスペースを取得できませんでした:', err);
+            }
+        };
+        if (user) {
+            loadWorkspaces();
+        }
+    }, [user]);
 
     // フローを取得
     useEffect(() => {
         const loadFlows = async () => {
+            if (!selectedWorkspaceId) return;
             try {
-                // Get first workspace
-                const wsRes = await authFetch(`${API_BASE}/workspaces`);
-                if (wsRes.ok) {
-                    const workspaces = await wsRes.json();
-                    if (workspaces.length > 0) {
-                        const flowsRes = await authFetch(`${API_BASE}/approvals/flows?workspace_id=${workspaces[0].id}`);
-                        if (flowsRes.ok) {
-                            const flowsData = await flowsRes.json();
-                            setFlows(flowsData);
-                        }
-                    }
+                const flowsRes = await authFetch(`${API_BASE}/approvals/flows?workspace_id=${selectedWorkspaceId}`);
+                if (flowsRes.ok) {
+                    const flowsData = await flowsRes.json();
+                    setFlows(flowsData);
                 }
             } catch (err) {
                 console.error('フローを取得できませんでした:', err);
             }
         };
-        if (user) {
-            loadFlows();
-        }
-    }, [user]);
+        loadFlows();
+    }, [selectedWorkspaceId]);
 
     // 承認依頼を作成
     const handleCreateApprovalRequest = async () => {
@@ -155,7 +170,8 @@ export function UploadPage() {
                 title || undefined,
                 address || undefined,
                 lawyerAddress,
-                totalAmount ? parseFloat(totalAmount) : undefined
+                totalAmount ? parseFloat(totalAmount) : undefined,
+                selectedWorkspaceId || undefined
             );
             setResult(data);
         } catch (err: any) {
@@ -370,6 +386,24 @@ export function UploadPage() {
                                 required
                             />
                             <span className="input-hint">条件を承認する弁護士のウォレットアドレスです。ブロックチェーン有効化に必要です</span>
+                        </div>
+
+                        <div className="input-group">
+                            <label className="input-label">ワークスペース <span className="text-error">*必須</span></label>
+                            <select
+                                className="input"
+                                value={selectedWorkspaceId}
+                                onChange={(e) => setSelectedWorkspaceId(e.target.value)}
+                                required
+                            >
+                                <option value="">ワークスペースを選択してください</option>
+                                {workspaces.map(ws => (
+                                    <option key={ws.id} value={ws.id}>
+                                        {ws.name}
+                                    </option>
+                                ))}
+                            </select>
+                            <span className="input-hint">契約を所属させるワークスペースを選択してください</span>
                         </div>
 
                         {isConnected && (

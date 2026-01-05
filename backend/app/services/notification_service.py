@@ -55,7 +55,9 @@ class NotificationService:
             
             # メッセージ作成
             msg = MIMEMultipart('alternative')
-            msg['From'] = f"{settings.SMTP_FROM_NAME} <{settings.SMTP_FROM_EMAIL}>"
+            # Gmail SMTPでは認証ユーザーとFromが一致している必要があるため、SMTP_USERを優先
+            from_email = settings.SMTP_USER if settings.SMTP_USER else settings.SMTP_FROM_EMAIL
+            msg['From'] = f"{settings.SMTP_FROM_NAME} <{from_email}>"
             msg['To'] = recipient
             msg['Subject'] = subject
             
@@ -111,14 +113,14 @@ class NotificationService:
                 response = await client.post(webhook_url, json=payload)
                 
                 if response.status_code == 200:
-                    logger.info("[SLACK] Successfully sent message to Slack")
+                    logger.info("[SLACK] Slackにメッセージを送信しました")
                     return True
                 else:
                     logger.error(f"[SLACK ERROR] Webhook送信に失敗しました: {response.status_code}: {response.text}")
                     return False
                     
         except Exception as e:
-            logger.error(f"[SLACK ERROR] Failed to send Slack message: {str(e)}", exc_info=True)
+            logger.error(f"[SLACK ERROR] Slackメッセージ送信に失敗しました: {str(e)}", exc_info=True)
             return False
     
     # ===== 通知作成と送信 =====

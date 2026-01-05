@@ -103,13 +103,14 @@ async function fetchAPI<T>(endpoint: string, options?: RequestInit): Promise<T> 
 // API サービス
 export const api = {
     // コントラクトアップロード
-    async uploadContract(file: File, title?: string, payerAddress?: string, lawyerAddress?: string, totalAmount?: number) {
+    async uploadContract(file: File, title?: string, payerAddress?: string, lawyerAddress?: string, totalAmount?: number, workspaceId?: string) {
         const formData = new FormData();
         formData.append('file', file);
         if (title) formData.append('title', title);
         if (payerAddress) formData.append('payer_address', payerAddress);
         if (lawyerAddress) formData.append('lawyer_address', lawyerAddress);
         if (totalAmount) formData.append('total_amount', totalAmount.toString());
+        if (workspaceId) formData.append('workspace_id', workspaceId);
 
         return fetchAPI<any>('/contracts/upload', {
             method: 'POST',
