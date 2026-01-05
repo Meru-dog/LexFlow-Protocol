@@ -83,6 +83,7 @@ class Settings(BaseSettings):
         """Pydantic設定クラスの内部設定"""
         env_file = ".env"  # 環境変数ファイルのパス
         case_sensitive = True  # 環境変数名の大文字小文字を区別
+        extra = "ignore"  # 未定義の環境変数を無視する（Render等のプラットフォーム変数を許容）
 
 
 # グローバル設定インスタンス
