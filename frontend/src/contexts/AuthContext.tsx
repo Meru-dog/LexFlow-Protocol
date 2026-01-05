@@ -23,7 +23,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 // ===== APIベースURL =====
 // const API_BASE = '/api/v1'; (Moved to services/api.ts for unified configuration)
-const SESSION_DURATION = 30 * 60 * 1000; // 30分（ミリ秒） - backend/app/core/config.pyと同期
+const SESSION_DURATION = 24 * 60 * 60 * 1000; // 24時間（ミリ秒） - 利便性向上のため延長
 
 // ===== トークン管理 =====
 const getAccessToken = () => localStorage.getItem('access_token');
