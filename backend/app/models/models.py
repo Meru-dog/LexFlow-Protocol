@@ -605,8 +605,8 @@ class Notification(Base):
     
     id = Column(String(64), primary_key=True)
     channel = Column(Enum(NotificationChannel), nullable=False)
-    recipient = Column(String(255), nullable=False)  # メールアドレス or Slackチャンネル
-    subject = Column(String(255), nullable=True)  # メール件名
+    recipient = Column(Text, nullable=False)  # メールアドレス or Slack Webhook URL (Textに変更)
+    subject = Column(String(512), nullable=True)  # メール件名 (512に増加)
     payload = Column(Text, nullable=False)  # 通知内容（JSON）
     status = Column(Enum(NotificationStatus), default=NotificationStatus.PENDING)
     sent_at = Column(DateTime(timezone=True), nullable=True)

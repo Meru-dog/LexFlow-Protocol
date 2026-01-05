@@ -66,7 +66,10 @@ async def update_my_profile(
     user = result.scalar_one_or_none()
     
     if not user:
-        raise HTTPException(status_code=404, detail="ユーザーが見つかりません")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, 
+            detail="ユーザー情報が失われました。再ログインしてください"
+        )
     
     if request.display_name is not None:
         user.display_name = request.display_name
@@ -149,7 +152,12 @@ async def test_email_notification(
     result = await db.execute(select(User).where(User.id == current_user_id))
     user = result.scalar_one_or_none()
     
-    if not user or not user.email:
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, 
+            detail="ユーザーが見つかりません。再ログインしてください"
+        )
+    if not user.email:
         raise HTTPException(status_code=400, detail="メールアドレスが登録されていません")
     
     from app.services.notification_service import notification_service
