@@ -23,28 +23,20 @@ const ContractChat: React.FC = () => {
     const [messages, setMessages] = useState<Message[]>([]);
     const [input, setInput] = useState('');
     const [loading, setLoading] = useState(false);
-    const [error, setError] = useState<string | null>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
     // ワークスペース読み込み
     useEffect(() => {
         const loadWorkspaces = async () => {
-            setError(null);
             try {
                 const data = await api.getWorkspaces();
                 setWorkspaces(data);
                 if (data && data.length > 0) {
                     setSelectedWorkspaceId(data[0].id);
-                } else {
-                    setError('ワークスペースが見つかりません。契約書をアップロードするワークスペースが必要です。');
                 }
             } catch (err: any) {
-                console.error('Failed to load workspaces:', err);
-                if (err.message.includes('401') || err.message.includes('無効なトークン')) {
-                    setError('セッションが期限切れです。一度ログアウトして再度ログインしてください。');
-                } else {
-                    setError('ワークスペースの読み込みに失敗しました。サーバーの状態を確認してください。');
-                }
+                console.error('ワークスペースの読み込みに失敗しました:', err);
+                // エラーはコンソールに記録するのみ
             }
         };
         loadWorkspaces();
@@ -102,8 +94,6 @@ const ContractChat: React.FC = () => {
 
             setMessages(prev => [...prev, assistantMessage]);
         } catch (err: any) {
-            setError(err.message || 'エラーが発生しました');
-
             // エラーメッセージをチャットに表示
             const errorMessage: Message = {
                 role: 'assistant',
