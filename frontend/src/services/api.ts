@@ -64,6 +64,15 @@ async function fetchAPI<T>(endpoint: string, options?: RequestInit): Promise<T> 
     });
 
     if (!response.ok) {
+        // セッション切れのハンドリング
+        if (response.status === 401) {
+            // トークンを削除してログインページ等で検知可能にする
+            // localStorage.removeItem('access_token'); // ここで消すと無限ループになる可能性があるので慎重に
+            const error: any = new Error('認証に失敗しました。再ログインしてください。');
+            error.status = 401;
+            throw error;
+        }
+
         // F8: x402 Paywall Handling
         if (response.status === 402) {
             const paymentHeader = response.headers.get('PAYMENT-REQUIRED');
@@ -428,6 +437,11 @@ export const api = {
         return fetchAPI('/users/me/test-email', {
             method: 'POST'
         });
+    },
+
+    // ===== ワークスペースAPI =====
+    async getWorkspaces() {
+        return fetchAPI<any[]>('/workspaces');
     },
 
     getFileUrl, // ヘルパー関数を追加

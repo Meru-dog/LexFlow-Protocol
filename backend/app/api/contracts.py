@@ -21,6 +21,7 @@ from app.services.contract_parser import contract_parser
 from app.services.blockchain_service import blockchain_service
 from app.services.version_service import version_service  # V2: F3機能
 from app.services.audit_service import audit_service
+from app.services.rag_service import rag_service
 from app.api.auth import get_current_user_id
 
 # ルーターの定義
@@ -140,6 +141,22 @@ async def upload_contract(
         # コミット
         await db.commit()
         print(f"🎉 コントラクト保存完了: {contract_id}")
+
+        # V2: F9 RAGインデックス作成
+        try:
+            print("🔍 RAGインデックス作成開始...")
+            # テキストを抽出
+            contract_text = await contract_parser.extract_text_from_file(file_content, file.filename)
+            # インデックス登録
+            await rag_service.index_contract(
+                contract_id=contract_id,
+                workspace_id=final_workspace_id,
+                text=contract_text,
+                metadata={"title": contract_title}
+            )
+            print("✅ RAGインデックス作成完了")
+        except Exception as rag_err:
+            print(f"⚠️ RAGインデックス作成に失敗（処理は継続）: {rag_err}")
         
     except Exception as e:
         print(f"❌ コントラクトアップロード中にエラー: {str(e)}")

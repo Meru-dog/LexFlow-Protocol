@@ -22,6 +22,7 @@ import WorkspaceSettings from './pages/WorkspaceSettings';
 import ApprovalFlowsPage from './pages/ApprovalFlows';
 import AuditLog from './pages/AuditLog';              // New: 監査証跡ページ
 import Notifications from './pages/Notifications';    // New: 通知履歴ページ
+import ContractSearch from './pages/ContractSearch';   // New: RAG検索ページ
 import './index.css';
 
 // React Query クライアント
@@ -66,6 +67,7 @@ function App() {
                   <Route path="/approvals" element={<ProtectedRoute><ApprovalFlowsPage /></ProtectedRoute>} />
                   <Route path="/audit" element={<ProtectedRoute><AuditLog /></ProtectedRoute>} />
                   <Route path="/notifications" element={<ProtectedRoute><Notifications /></ProtectedRoute>} />
+                  <Route path="/search" element={<ProtectedRoute><ContractSearch /></ProtectedRoute>} />
                 </Routes>
               </main>
             </div>

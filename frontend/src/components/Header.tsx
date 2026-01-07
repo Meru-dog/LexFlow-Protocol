@@ -42,6 +42,7 @@ export function Header() {
                     <Link to="/approvals" className="nav-link">Approvals</Link>
                     <Link to="/workspaces" className="nav-link">Workspaces</Link>
                     <Link to="/audit" className="nav-link">Audit Log</Link>
+                    <Link to="/search" className="nav-link">Assistant</Link>
                     <Link to="/notifications" className="nav-link">Notifications</Link>
                     <Link to="/verification" className="nav-link">Verification</Link>
                     <Link to="/upload" className="nav-link">Upload</Link>

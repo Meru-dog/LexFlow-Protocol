@@ -11,7 +11,7 @@ from contextlib import asynccontextmanager  # 非同期コンテキストマネ�
 from app.core.config import settings  # アプリケーション設定の読み込み
 from app.core.database import engine, Base  # データベースエンジンとベースモデル
 from app.core.logging_config import setup_logging, get_logger  # ロギング設定
-from app.api import contracts, judgments, obligations, versions, signatures, redline, zk_proofs  # APIルーターのインポート（V2: ...に加えzk_proofsを追加）
+from app.api import contracts, judgments, obligations, versions, signatures, redline, zk_proofs, rag  # APIルーターのインポート
 from app.api import auth, rbac, approvals, audit, notifications, users  # V3: 認証、RBAC、承認、監査、通知、ユーザーAPI
 
 # ロギングの初期化
@@ -93,7 +93,7 @@ async def global_exception_handler(request: Request, exc: Exception):
     
     # 500エラーのレスポンス
     status_code = 500
-    detail = "Internal server error occurred"
+    detail = "サーバーエラーが発生しました"
     error_type = type(exc).__name__
     
     # HTTPExceptionの場合はそのステータスコードと詳細を使用
@@ -133,6 +133,7 @@ app.include_router(versions.router, prefix="/api/v1")     # V2: 契約版管理A
 app.include_router(signatures.router, prefix="/api/v1")   # V2: 署名API（F3）
 app.include_router(redline.router, prefix="/api/v1")      # V2: Redline比較API（F4）
 app.include_router(zk_proofs.router, prefix="/api/v1")    # V2: ZK証跡API（F7/F9）
+app.include_router(rag.router, prefix="/api/v1")          # V2: RAG検索API
 
 # V3: 認証・RBAC・承認・監査・通知API
 app.include_router(auth.router, prefix="/api/v1")          # V3: 認証API
