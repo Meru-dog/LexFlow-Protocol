@@ -111,19 +111,93 @@ class RAGService:
             
         return formatted_results
 
-    async def query_with_context(self, workspace_id: str, query: str) -> Dict[str, Any]:
+    async def query_with_context(self, workspace_id: str, query: str, limit: int = 5) -> Dict[str, Any]:
         """
-        コンテキストを検索し、それに基づいた回答を生成するための準備
-        （実際のLLM呼び出しは judgment_service 等のプロンプトで利用することを想定）
-        """
-        contexts = await self.search_relevant_context(workspace_id, query)
-        combined_context = "\n\n".join([c["content"] for c in contexts])
+        RAG検索を実行し、OpenAI APIを使用して質問に対する回答を生成
         
-        return {
-            "query": query,
-            "context": combined_context,
-            "source_documents": [c["metadata"].get("contract_id") for c in contexts]
-        }
+        Returns:
+            answer: AIの回答テキスト
+            sources: 引用元の契約書情報とチャンク内容のリスト
+        """
+        from openai import AsyncOpenAI
+        
+        # 関連コンテキストを検索
+        contexts = await self.search_relevant_context(workspace_id, query, limit=limit)
+        
+        if not contexts:
+            return {
+                "answer": "申し訳ございませんが、関連する契約書の情報が見つかりませんでした。別の表現で質問してみてください。",
+                "sources": []
+            }
+        
+        # コンテキストをプロンプト用にフォーマット
+        context_texts = []
+        for idx, ctx in enumerate(contexts, 1):
+            title = ctx["metadata"].get("title", "不明な契約書")
+            content = ctx["content"]
+            context_texts.append(f"【契約書 {idx}: {title}】\n{content}")
+        
+        combined_context = "\n\n".join(context_texts)
+        
+        # OpenAI APIを呼び出し
+        client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+        
+        system_prompt = """あなたは契約書の専門家アシスタントです。以下の契約書の抜粋を参照して、ユーザーの質問に正確に答えてください。
+
+【重要な指示】
+- 必ず提供された契約書の内容のみに基づいて回答してください
+- 回答の根拠となる契約書名や条項を明記してください
+- 不確実な場合や契約書に記載がない場合は、「契約書には明記されていません」と正直に答えてください
+- 簡潔で分かりやすい日本語で回答してください
+- 箇条書きを使って整理された回答を心がけてください"""
+
+        user_prompt = f"""契約書の抜粋:
+{combined_context}
+
+ユーザーの質問: {query}"""
+
+        try:
+            response = await client.chat.completions.create(
+                model="gpt-4o-mini",  # コスト効率の良いモデル
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ],
+                temperature=0.3,  # 一貫性のある回答のため低めに設定
+                max_tokens=800
+            )
+            
+            answer = response.choices[0].message.content
+            
+            # ソース情報を整形
+            sources = []
+            for ctx in contexts:
+                sources.append({
+                    "contract_id": ctx["metadata"].get("contract_id"),
+                    "title": ctx["metadata"].get("title", "不明な契約書"),
+                    "excerpt": ctx["content"][:200] + "..." if len(ctx["content"]) > 200 else ctx["content"],
+                    "relevance_score": 1.0 / (1.0 + ctx["score"])  # スコアを0-1の範囲に正規化
+                })
+            
+            return {
+                "answer": answer,
+                "sources": sources
+            }
+            
+        except Exception as e:
+            print(f"❌ OpenAI API Error: {e}")
+            return {
+                "answer": f"申し訳ございません。回答の生成中にエラーが発生しました: {str(e)}",
+                "sources": [
+                    {
+                        "contract_id": ctx["metadata"].get("contract_id"),
+                        "title": ctx["metadata"].get("title", "不明な契約書"),
+                        "excerpt": ctx["content"][:200] + "...",
+                        "relevance_score": 1.0 / (1.0 + ctx["score"])
+                    }
+                    for ctx in contexts
+                ]
+            }
 
 # シングルトンインスタンス
 rag_service = RAGService()

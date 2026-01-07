@@ -26,6 +26,24 @@ class QueryResponse(BaseModel):
     context: str
     source_documents: List[str]
 
+class ChatQuery(BaseModel):
+    """チャットクエリリクエスト"""
+    query: str
+    workspace_id: str
+    limit: Optional[int] = 5
+
+class SourceInfo(BaseModel):
+    """出典情報"""
+    contract_id: str
+    title: str
+    excerpt: str
+    relevance_score: float
+
+class ChatResponse(BaseModel):
+    """チャットレスポンス"""
+    answer: str
+    sources: List[SourceInfo]
+
 @router.post("/search", response_model=List[SearchResult])
 async def search_contracts(
     search_query: SearchQuery,
@@ -61,4 +79,26 @@ async def query_with_context(
         return result
     except Exception as e:
         print(f"❌ RAG クエリエラー: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/chat", response_model=ChatResponse)
+async def chat_with_contracts(
+    chat_query: ChatQuery,
+    current_user_id: str = Depends(get_current_user_id)
+):
+    """
+    契約書の内容に基づいてAIが質問に回答
+    
+    RAG検索を実行し、OpenAI APIを使用して契約書の内容に基づいた
+    インテリジェントな回答を生成します。
+    """
+    try:
+        result = await rag_service.query_with_context(
+            workspace_id=chat_query.workspace_id,
+            query=chat_query.query,
+            limit=chat_query.limit
+        )
+        return result
+    except Exception as e:
+        print(f"❌ RAG チャットエラー: {e}")
         raise HTTPException(status_code=500, detail=str(e))
